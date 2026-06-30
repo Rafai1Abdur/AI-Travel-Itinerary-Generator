@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Travel Itinerary Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="header">
+        <h1 class="logo">TravelGenie</h1>
+        <p class="tagline">Your AI-powered travel companion</p>
+    </header>
+
+    <main class="container">
+        <form id="itinerary-form" class="travel-form">
+            <div class="form-group">
+                <label for="destination">Destination</label>
+                <input type="text" id="destination" name="destination" required maxlength="100" placeholder="e.g., Paris, France">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="start-date">Start Date</label>
+                    <input type="date" id="start-date" name="startDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="end-date">End Date</label>
+                    <input type="date" id="end-date" name="endDate" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="budget">Budget</label>
+                    <select id="budget" name="budget" required>
+                        <option value="budget">Budget</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="luxury">Luxury</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="travelers">Travelers</label>
+                    <input type="number" id="travelers" name="travelers" min="1" max="20" value="1" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <fieldset>
+                    <legend>Travel Style</legend>
+                    <div class="radio-group">
+                        <label><input type="radio" name="travelStyle" value="family" required> Family</label>
+                        <label><input type="radio" name="travelStyle" value="solo"> Solo</label>
+                        <label><input type="radio" name="travelStyle" value="couple"> Couple</label>
+                        <label><input type="radio" name="travelStyle" value="adventure"> Adventure</label>
+                    </div>
+                </fieldset>
+            </div>
+
+            <div class="form-group">
+                <fieldset>
+                    <legend>Interests</legend>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="interests" value="culture"> Culture</label>
+                        <label><input type="checkbox" name="interests" value="food"> Food</label>
+                        <label><input type="checkbox" name="interests" value="nature"> Nature</label>
+                        <label><input type="checkbox" name="interests" value="shopping"> Shopping</label>
+                        <label><input type="checkbox" name="interests" value="entertainment"> Entertainment</label>
+                    </div>
+                </fieldset>
+            </div>
+
+            <button type="submit" class="btn-primary">
+                <span class="btn-text">Generate Itinerary</span>
+                <span class="spinner hidden" id="spinner"></span>
+            </button>
+        </form>
+
+        <section id="loading" class="loading hidden">
+            <div class="skeleton-cards">
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+            </div>
+        </section>
+
+        <section id="results" class="results hidden"></section>
+
+        <div id="error" class="error-banner hidden"></div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
