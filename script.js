@@ -105,6 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (data && data.days && Array.isArray(data.days)) {
             days = data.days;
+        } else if (data && data.travelItinerary && data.travelItinerary.itinerary && Array.isArray(data.travelItinerary.itinerary)) {
+            days = data.travelItinerary.itinerary;
+            meta = { destination: data.travelItinerary.destination };
         } else if (data && data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
             days = data.itinerary.days;
             meta = data.itinerary;
@@ -146,19 +149,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const activitiesHtml = day.activities && day.activities.length > 0
                 ? day.activities.map((activity, actIdx) => {
-                    let timeLabel = activity.time;
-                    if (!timeLabel) {
-                        if (actIdx < 1) timeLabel = 'Morning';
-                        else if (actIdx < 3) timeLabel = 'Afternoon';
-                        else timeLabel = 'Evening';
+                    let timeLabel;
+                    let actName;
+                    let actDesc;
+
+                    if (typeof activity === 'string') {
+                        timeLabel = actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening';
+                        actName = activity;
+                        actDesc = '';
                     } else {
-                        timeLabel = normalizeTime(activity.time);
+                        timeLabel = activity.time ? normalizeTime(activity.time) : (actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening');
+                        actName = activity.name || activity.activity || 'Unknown';
+                        actDesc = activity.description || '';
                     }
+
                     return `
                     <div class="activity">
                         <div class="activity-time">${timeLabel}</div>
-                        <div class="activity-name">${activity.name || activity.activity || 'Unknown'}</div>
-                        ${activity.description ? `<div class="activity-desc">${activity.description}</div>` : ''}
+                        <div class="activity-name">${actName}</div>
+                        ${actDesc ? `<div class="activity-desc">${actDesc}</div>` : ''}
                     </div>
                 `;
                 }).join('')

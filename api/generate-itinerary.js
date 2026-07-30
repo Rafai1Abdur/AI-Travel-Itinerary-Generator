@@ -11,7 +11,41 @@ function normalizeItinerary(data) {
 
     let itinerary = data;
 
-    // Handle { itinerary: { days: [...] } } format (latest OpenRouter response)
+    // Handle { travelItinerary: { itinerary: [...] } } format (latest OpenRouter response)
+    // Note: this is handled in script.js; server-side normalization covers the other formats
+    if (data.travelItinerary && data.travelItinerary.itinerary && Array.isArray(data.travelItinerary.itinerary)) {
+        itinerary = {
+            days: data.travelItinerary.itinerary.map((day, idx) => {
+                let dayLabel = day.day;
+                if (typeof day.day === 'number') {
+                    dayLabel = `Day ${day.day}`;
+                } else if (typeof day.day === 'string' && !day.day.startsWith('Day ')) {
+                    dayLabel = `Day ${day.day}`;
+                }
+                const normalizedDate = (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.date))
+                    ? new Date(day.date + 'T00:00:00').toDateString()
+                    : (data.travelItinerary.dates ? data.travelItinerary.dates.start : '');
+                let activities = (day.activities || []).map((act, actIdx) => {
+                    let timeLabel;
+                    let actName;
+                    let actDesc;
+                    if (typeof act === 'string') {
+                        timeLabel = actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening';
+                        actName = act;
+                        actDesc = '';
+                    } else {
+                        timeLabel = act.time ? capitalizeTime(act.time) : (actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening');
+                        actName = act.name || act.activity || 'Unknown';
+                        actDesc = act.description || '';
+                    }
+                    return { time: timeLabel, name: actName, description: actDesc };
+                });
+                return { day: dayLabel, date: normalizedDate, location: day.location || '', activities };
+            })
+        };
+    }
+    // Handle { itinerary: { days: [...] } } format (OpenRouter format with ISO dates)
+    else if (data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
     if (data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
         itinerary = {
             days: data.itinerary.days.map((day, idx) => {
