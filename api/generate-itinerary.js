@@ -1,7 +1,60 @@
 // api/generate-itinerary.js
-// Hybrid: Uses OpenAI API key if available, falls back to mock data
+// Version A: AI-powered with OpenAI, Ollama, OpenRouter, or mock fallback
+// Set OPENAI_API_KEY, OLLAMA_URL, or OPENROUTER_API_KEY in environment
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+
+function normalizeItinerary(itinerary) {
+    if (!itinerary || !itinerary.days || !Array.isArray(itinerary.days)) {
+        return itinerary;
+    }
+    return {
+        ...itinerary,
+        days: itinerary.days.map(day => {
+            let dayLabel = day.day;
+            if (typeof day.day === 'number') {
+                dayLabel = `Day ${day.day}`;
+            } else if (typeof day.day === 'string') {
+                const dayNum = parseInt(day.day);
+                if (!isNaN(dayNum) && dayNum > 0) {
+                    dayLabel = `Day ${dayNum}`;
+                } else if (!day.day.startsWith('Day ')) {
+                    dayLabel = `Day ${day.day}`;
+                }
+            }
+            let normalizedDate = day.date || '';
+            if (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.date)) {
+                normalizedDate = new Date(day.date + 'T00:00:00').toDateString();
+            }
+            let activities = day.activities;
+            if (activities && Array.isArray(activities)) {
+                activities = activities.map(act => {
+                    let timeLabel = act.time;
+                    if (typeof act.time === 'string' && /^\d{1,2}:\d{2}/.test(act.time)) {
+                        const hour = parseInt(act.time.split(':')[0]);
+                        if (hour < 6) timeLabel = 'Night';
+                        else if (hour < 12) timeLabel = 'Morning';
+                        else if (hour < 17) timeLabel = 'Afternoon';
+                        else if (hour < 21) timeLabel = 'Evening';
+                        else timeLabel = 'Night';
+                    }
+                    return {
+                        time: timeLabel,
+                        name: act.name || 'Unknown',
+                        description: act.description || ''
+                    };
+                });
+            }
+            return {
+                day: dayLabel,
+                date: normalizedDate,
+                activities
+            };
+        })
+    };
+}
 
 export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
@@ -16,7 +69,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Generate mock fallback
+    // Generate mock fallback (no AI costs)
     const mockItinerary = {
         days: Array.from({ length: (new Date(endDate) - new Date(startDate)) / 86400000 + 1 }, (_, i) => ({
             day: `Day ${i + 1}`,
@@ -29,7 +82,7 @@ export default async function handler(req, res) {
         }))
     };
 
-    // Try OpenAI if key is configured
+    // Try OpenAI first
     if (OPENAI_API_KEY) {
         try {
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -42,7 +95,7 @@ export default async function handler(req, res) {
                     model: 'gpt-4.1-mini',
                     messages: [
                         { role: 'system', content: 'You are a travel expert. Output only valid JSON.' },
-                        { role: 'user', content: `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ')}. Return only JSON with structure: {"days":[{"day":"Day 1","date":"Date","activities":[{"time":"Morning","name":"Activity","description":"Desc"}]}]}` }
+                        { role: 'user', content: `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ')}. Return only JSON.` }
                     ],
                     response_format: { type: 'json_object' },
                     max_tokens: 1500
@@ -53,15 +106,80 @@ export default async function handler(req, res) {
                 const result = await response.json();
                 if (result.choices?.[0]?.message?.content) {
                     try {
-                        const parsed = JSON.parse(result.choices[0].message.content);
-                        return res.status(200).json(parsed);
+                        return res.status(200).json(normalizeItinerary(JSON.parse(result.choices[0].message.content)));
                     } catch {
                         return res.status(200).json(mockItinerary);
                     }
                 }
             }
         } catch (error) {
-            console.log('OpenAI error, using mock data:', error.message);
+            console.log('OpenAI error, falling back:', error.message);
+        }
+    }
+
+    // Try Ollama (local, free)
+    try {
+        const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'llama3.1:8b',
+                messages: [
+                    { role: 'system', content: 'You are a travel expert. Output only valid JSON.' },
+                    { role: 'user', content: `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ')}. Return only JSON.` }
+                ],
+                stream: false
+            })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            if (result.message?.content) {
+                try {
+                    return res.status(200).json(normalizeItinerary(JSON.parse(result.message.content)));
+                } catch {
+                    return res.status(200).json(mockItinerary);
+                }
+            }
+        }
+    } catch (error) {
+        console.log('Ollama error, using mock data:', error.message);
+    }
+
+    // Try OpenRouter (unified AI access)
+    if (OPENROUTER_API_KEY) {
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                    'HTTP-Referer': 'https://travelgenie.example.com',
+                    'X-Title': 'TravelGenie'
+                },
+                body: JSON.stringify({
+                    model: 'openai/gpt-4o-mini',
+                    messages: [
+                        { role: 'system', content: 'You are a travel expert. Output only valid JSON.' },
+                        { role: 'user', content: `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ')}. Return only JSON.` }
+                    ],
+                    response_format: { type: 'json_object' },
+                    max_tokens: 1500
+                })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.choices?.[0]?.message?.content) {
+                    try {
+                        return res.status(200).json(normalizeItinerary(JSON.parse(result.choices[0].message.content)));
+                    } catch {
+                        return res.status(200).json(mockItinerary);
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('OpenRouter error, falling back:', error.message);
         }
     }
 
