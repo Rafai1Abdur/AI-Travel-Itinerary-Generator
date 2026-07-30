@@ -102,24 +102,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let days = [];
         let meta = {};
+        let sourceFormat = '';
 
-        if (data && data.days && Array.isArray(data.days)) {
+        // Detect format and extract days array
+        if (data && Array.isArray(data)) {
+            days = data;
+            sourceFormat = 'array';
+        } else if (data && data.days && Array.isArray(data.days)) {
             days = data.days;
+            sourceFormat = 'top-level-days';
         } else if (data && data.travelItinerary && data.travelItinerary.itinerary && Array.isArray(data.travelItinerary.itinerary)) {
             days = data.travelItinerary.itinerary;
             meta = { destination: data.travelItinerary.destination };
+            sourceFormat = 'travelItinerary';
         } else if (data && data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
             days = data.itinerary.days;
             meta = data.itinerary;
+            sourceFormat = 'nested-itinerary-days';
         } else if (data && data.itinerary && data.itinerary.destinations && Array.isArray(data.itinerary.destinations)) {
             days = data.itinerary.destinations;
             meta = { destination: data.itinerary.destination };
-        } else if (Array.isArray(data)) {
-            days = data;
+            sourceFormat = 'nested-itinerary-destinations';
         }
 
         if (days.length === 0) {
             showError('Invalid response from server');
+            console.error('renderItinerary: No days found. data keys:', Object.keys(data || {}), 'format:', sourceFormat);
             return;
         }
 
@@ -135,6 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 dayLabel = `Day ${day.day}`;
             } else if (typeof day.day === 'string' && !day.day.startsWith('Day ')) {
                 dayLabel = `Day ${day.day}`;
+            } else if (typeof day.day === 'undefined') {
+                dayLabel = `Day ${index + 1}`;
             }
 
             let dateLabel = day.date || '';
