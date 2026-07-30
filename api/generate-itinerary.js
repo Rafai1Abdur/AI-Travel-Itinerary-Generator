@@ -11,20 +11,58 @@ function normalizeItinerary(data) {
 
     let itinerary = data;
 
-    if (data.itinerary && data.itinerary.destinations) {
+    // Handle { itinerary: { days: [...] } } format (latest OpenRouter response)
+    if (data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
+        itinerary = {
+            days: data.itinerary.days.map((day, idx) => {
+                let dayLabel = day.day;
+                if (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day)) {
+                    dayLabel = `Day ${idx + 1}`;
+                } else if (typeof day.day === 'number') {
+                    dayLabel = `Day ${day.day}`;
+                } else if (typeof day.day === 'string' && !day.day.startsWith('Day ')) {
+                    dayLabel = `Day ${day.day}`;
+                }
+                const normalizedDate = (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day))
+                    ? new Date(day.day + 'T00:00:00').toDateString()
+                    : (data.itinerary.travel_dates ? data.itinerary.travel_dates.start : '');
+                let activities = day.activities || [];
+                activities = activities.map((act, actIdx) => {
+                    let timeLabel;
+                    if (actIdx < 1) timeLabel = 'Morning';
+                    else if (actIdx < 3) timeLabel = 'Afternoon';
+                    else timeLabel = 'Evening';
+                    return {
+                        time: timeLabel,
+                        name: act.name || act.activity || 'Unknown',
+                        description: act.description || ''
+                    };
+                });
+                return { day: dayLabel, date: normalizedDate, activities };
+            })
+        };
+    }
+    // Handle { itinerary: { destinations: [...] } } format
+    else if (data.itinerary && data.itinerary.destinations) {
         itinerary = {
             days: data.itinerary.destinations.map((dest, idx) => ({
                 day: `Day ${idx + 1}`,
                 date: dest.date,
                 location: dest.location,
-                activities: dest.activities.map(act => ({
-                    time: act.time || '',
+                activities: (dest.activities || []).map(act => ({
+                    time: act.time || (actIdx => {
+                        if (actIdx < 1) return 'Morning';
+                        if (actIdx < 3) return 'Afternoon';
+                        return 'Evening';
+                    })(0),
                     name: act.activity || act.name || 'Unknown',
                     description: act.description || ''
                 }))
             }))
         };
-    } else if (data.days) {
+    }
+    // Handle standard { days: [...] } format
+    else if (data.days) {
         itinerary = data;
     } else {
         return data;
@@ -50,7 +88,7 @@ function normalizeItinerary(data) {
             }
             let activities = day.activities;
             if (activities && Array.isArray(activities)) {
-                activities = activities.map(act => {
+                activities = activities.map((act, actIdx) => {
                     let timeLabel = act.time;
                     if (typeof act.time === 'string' && /^\d{1,2}:\d{2}/.test(act.time)) {
                         const hour = parseInt(act.time.split(':')[0]);
@@ -59,6 +97,10 @@ function normalizeItinerary(data) {
                         else if (hour < 17) timeLabel = 'Afternoon';
                         else if (hour < 21) timeLabel = 'Evening';
                         else timeLabel = 'Night';
+                    } else if (!act.time) {
+                        if (actIdx < 1) timeLabel = 'Morning';
+                        else if (actIdx < 3) timeLabel = 'Afternoon';
+                        else timeLabel = 'Evening';
                     } else {
                         timeLabel = capitalizeTime(act.time);
                     }
@@ -77,6 +119,16 @@ function normalizeItinerary(data) {
             };
         })
     };
+}
+
+function capitalizeTime(time) {
+    if (typeof time !== 'string') return time || '';
+    const lower = time.toLowerCase();
+    if (lower === 'morning' || lower === 'am') return 'Morning';
+    if (lower === 'afternoon' || lower === 'midday') return 'Afternoon';
+    if (lower === 'evening' || lower === 'pm') return 'Evening';
+    if (lower === 'night' || lower === 'late') return 'Night';
+    return time;
 }
 
 function capitalizeTime(time) {

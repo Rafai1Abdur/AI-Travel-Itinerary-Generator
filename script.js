@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Response status:', response.status);
             const itinerary = await response.json();
             console.log('Received itinerary:', JSON.stringify(itinerary, null, 2));
-            const daysCount = itinerary.days ? itinerary.days.length : (itinerary.itinerary && itinerary.itinerary.destinations ? itinerary.itinerary.destinations.length : 0);
+            const daysCount = itinerary.days ? itinerary.days.length : (itinerary.itinerary ? (itinerary.itinerary.days ? itinerary.itinerary.days.length : itinerary.itinerary.destinations ? itinerary.itinerary.destinations.length : 0) : 0);
             console.log('Days count:', daysCount);
             renderItinerary(itinerary);
         } catch (err) {
@@ -101,21 +101,17 @@ document.addEventListener('DOMContentLoaded', () => {
         results.innerHTML = '';
 
         let days = [];
+        let meta = {};
 
-        if (data && data.days) {
+        if (data && data.days && Array.isArray(data.days)) {
             days = data.days;
-        } else if (data && data.itinerary && data.itinerary.destinations) {
-            days = data.itinerary.destinations.map((dest, idx) => ({
-                day: `Day ${idx + 1}`,
-                date: dest.date,
-                location: dest.location,
-                activities: dest.activities.map(act => ({
-                    time: normalizeTime(act.time),
-                    name: act.activity || act.name || 'Unknown',
-                    description: act.description || ''
-                }))
-            }));
-        } else if (data && Array.isArray(data)) {
+        } else if (data && data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
+            days = data.itinerary.days;
+            meta = data.itinerary;
+        } else if (data && data.itinerary && data.itinerary.destinations && Array.isArray(data.itinerary.destinations)) {
+            days = data.itinerary.destinations;
+            meta = { destination: data.itinerary.destination };
+        } else if (Array.isArray(data)) {
             days = data;
         }
 
@@ -129,20 +125,47 @@ document.addEventListener('DOMContentLoaded', () => {
             card.className = 'day-card';
             card.style.transitionDelay = `${index * 100}ms`;
 
+            let dayLabel = day.day;
+            if (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day)) {
+                dayLabel = `Day ${index + 1}`;
+            } else if (typeof day.day === 'number') {
+                dayLabel = `Day ${day.day}`;
+            } else if (typeof day.day === 'string' && !day.day.startsWith('Day ')) {
+                dayLabel = `Day ${day.day}`;
+            }
+
+            let dateLabel = day.date || '';
+            if (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.date)) {
+                dateLabel = new Date(day.date + 'T00:00:00').toDateString();
+            } else if (typeof day.date === 'string') {
+                dateLabel = day.date;
+            }
+
             const locationLabel = day.location ? ` <span class="day-location">(${day.location})</span>` : '';
+            const metaLabel = meta.destination ? ` <span class="day-destination">${meta.destination}</span>` : '';
 
             const activitiesHtml = day.activities && day.activities.length > 0
-                ? day.activities.map(activity => `
+                ? day.activities.map((activity, actIdx) => {
+                    let timeLabel = activity.time;
+                    if (!timeLabel) {
+                        if (actIdx < 1) timeLabel = 'Morning';
+                        else if (actIdx < 3) timeLabel = 'Afternoon';
+                        else timeLabel = 'Evening';
+                    } else {
+                        timeLabel = normalizeTime(activity.time);
+                    }
+                    return `
                     <div class="activity">
-                        <div class="activity-time">${activity.time}</div>
-                        <div class="activity-name">${activity.name}</div>
+                        <div class="activity-time">${timeLabel}</div>
+                        <div class="activity-name">${activity.name || activity.activity || 'Unknown'}</div>
                         ${activity.description ? `<div class="activity-desc">${activity.description}</div>` : ''}
                     </div>
-                `).join('')
+                `;
+                }).join('')
                 : '<div class="activity">No activities planned</div>';
 
             card.innerHTML = `
-                <div class="day-header">${day.day}${locationLabel}: ${day.date}</div>
+                <div class="day-header">${dayLabel}${metaLabel}: ${dateLabel}${locationLabel}</div>
                 ${activitiesHtml}
             `;
 
