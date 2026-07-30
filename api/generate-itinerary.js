@@ -6,10 +6,30 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
-function normalizeItinerary(itinerary) {
-    if (!itinerary || !itinerary.days || !Array.isArray(itinerary.days)) {
-        return itinerary;
+function normalizeItinerary(data) {
+    if (!data) return data;
+
+    let itinerary = data;
+
+    if (data.itinerary && data.itinerary.destinations) {
+        itinerary = {
+            days: data.itinerary.destinations.map((dest, idx) => ({
+                day: `Day ${idx + 1}`,
+                date: dest.date,
+                location: dest.location,
+                activities: dest.activities.map(act => ({
+                    time: act.time || '',
+                    name: act.activity || act.name || 'Unknown',
+                    description: act.description || ''
+                }))
+            }))
+        };
+    } else if (data.days) {
+        itinerary = data;
+    } else {
+        return data;
     }
+
     return {
         ...itinerary,
         days: itinerary.days.map(day => {
@@ -39,10 +59,12 @@ function normalizeItinerary(itinerary) {
                         else if (hour < 17) timeLabel = 'Afternoon';
                         else if (hour < 21) timeLabel = 'Evening';
                         else timeLabel = 'Night';
+                    } else {
+                        timeLabel = capitalizeTime(act.time);
                     }
                     return {
                         time: timeLabel,
-                        name: act.name || 'Unknown',
+                        name: act.name || act.activity || 'Unknown',
                         description: act.description || ''
                     };
                 });
@@ -50,10 +72,21 @@ function normalizeItinerary(itinerary) {
             return {
                 day: dayLabel,
                 date: normalizedDate,
+                location: day.location || '',
                 activities
             };
         })
     };
+}
+
+function capitalizeTime(time) {
+    if (typeof time !== 'string') return time || '';
+    const lower = time.toLowerCase();
+    if (lower === 'morning' || lower === 'am') return 'Morning';
+    if (lower === 'afternoon' || lower === 'midday') return 'Afternoon';
+    if (lower === 'evening' || lower === 'pm') return 'Evening';
+    if (lower === 'night' || lower === 'late') return 'Night';
+    return time;
 }
 
 export default async function handler(req, res) {

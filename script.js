@@ -35,9 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Response status:', response.status);
             const itinerary = await response.json();
             console.log('Received itinerary:', JSON.stringify(itinerary, null, 2));
-            if (itinerary.days) {
-                console.log('Days count:', itinerary.days.length);
-            }
+            const daysCount = itinerary.days ? itinerary.days.length : (itinerary.itinerary && itinerary.itinerary.destinations ? itinerary.itinerary.destinations.length : 0);
+            console.log('Days count:', daysCount);
             renderItinerary(itinerary);
         } catch (err) {
             console.error('Fetch error:', err);
@@ -98,43 +97,74 @@ document.addEventListener('DOMContentLoaded', () => {
         error.classList.add('hidden');
     }
 
-    function renderItinerary(itinerary) {
+    function renderItinerary(data) {
         results.innerHTML = '';
-        
-        if (!itinerary || !itinerary.days) {
+
+        let days = [];
+
+        if (data && data.days) {
+            days = data.days;
+        } else if (data && data.itinerary && data.itinerary.destinations) {
+            days = data.itinerary.destinations.map((dest, idx) => ({
+                day: `Day ${idx + 1}`,
+                date: dest.date,
+                location: dest.location,
+                activities: dest.activities.map(act => ({
+                    time: normalizeTime(act.time),
+                    name: act.activity || act.name || 'Unknown',
+                    description: act.description || ''
+                }))
+            }));
+        } else if (data && Array.isArray(data)) {
+            days = data;
+        }
+
+        if (days.length === 0) {
             showError('Invalid response from server');
             return;
         }
-        
-        itinerary.days.forEach((day, index) => {
+
+        days.forEach((day, index) => {
             const card = document.createElement('div');
             card.className = 'day-card';
             card.style.transitionDelay = `${index * 100}ms`;
-            
+
+            const locationLabel = day.location ? ` <span class="day-location">(${day.location})</span>` : '';
+
             const activitiesHtml = day.activities && day.activities.length > 0
                 ? day.activities.map(activity => `
                     <div class="activity">
                         <div class="activity-time">${activity.time}</div>
                         <div class="activity-name">${activity.name}</div>
-                        <div class="activity-desc">${activity.description}</div>
+                        ${activity.description ? `<div class="activity-desc">${activity.description}</div>` : ''}
                     </div>
                 `).join('')
                 : '<div class="activity">No activities planned</div>';
-            
+
             card.innerHTML = `
-                <div class="day-header">${day.day}: ${day.date}</div>
+                <div class="day-header">${day.day}${locationLabel}: ${day.date}</div>
                 ${activitiesHtml}
             `;
-            
+
             results.appendChild(card);
         });
-        
+
         results.classList.remove('hidden');
-        
+
         setTimeout(() => {
             document.querySelectorAll('.day-card').forEach(card => {
                 card.classList.add('visible');
             });
         }, 50);
+    }
+
+    function normalizeTime(time) {
+        if (typeof time !== 'string') return time || '';
+        const lower = time.toLowerCase();
+        if (lower === 'morning' || lower === 'am') return 'Morning';
+        if (lower === 'afternoon' || lower === 'midday') return 'Afternoon';
+        if (lower === 'evening' || lower === 'pm') return 'Evening';
+        if (lower === 'night' || lower === 'late') return 'Night';
+        return time;
     }
 });
