@@ -188,6 +188,67 @@ function parseTextItinerary(text) {
     return days.length > 0 ? { days } : null;
 }
 
+/**
+ * Attempt to repair truncated JSON by closing unclosed brackets, quotes, and removing trailing commas.
+ * Returns the repaired JSON string, or null if repair is not possible.
+ */
+function repairTruncatedJson(text) {
+    if (typeof text !== 'string' || text.trim().length === 0) return null;
+
+    let repaired = text.trim();
+
+    // Remove trailing commas before closing brackets
+    repaired = repaired.replace(/,\s*([}\]])/g, '$1');
+
+    // Track bracket/quote balance
+    const stack = [];
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < repaired.length; i++) {
+        const char = repaired[i];
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (char === '\\') {
+                escaped = true;
+            } else if (char === '"') {
+                inString = false;
+            }
+            continue;
+        }
+        if (char === '"') {
+            inString = true;
+        } else if (char === '{' || char === '[') {
+            stack.push(char);
+        } else if (char === '}' || char === ']') {
+            const expected = char === '}' ? '{' : '[';
+            if (stack.length > 0 && stack[stack.length - 1] === expected) {
+                stack.pop();
+            }
+        }
+    }
+
+    // If we're inside a string, close it
+    if (inString) {
+        repaired += '"';
+    }
+
+    // Close any unclosed brackets in reverse order
+    while (stack.length > 0) {
+        const open = stack.pop();
+        repaired += open === '{' ? '}' : ']';
+    }
+
+    // Try to parse the repaired JSON
+    try {
+        const parsed = JSON.parse(repaired);
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
 function normalizeItinerary(data) {
     if (!data) return data;
 
@@ -275,7 +336,13 @@ export default async function handler(req, res) {
         interests
     });
 
-    const prompt = `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}. Return only JSON with a "days" array. Each day has "day", "date", and "activities" (array with "time", "name", "description").`;
+    // Calculate trip length in days for dynamic token allocation
+    const tripDays = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+    // Allocate ~300 tokens per day + 500 buffer for the JSON structure
+    const maxTokens = Math.min(8000, tripDays * 300 + 500);
+    console.log('[Request] Trip days:', tripDays, '| Max tokens:', maxTokens);
+
+    const prompt = `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate} (${tripDays} days). Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}. Return ONLY valid JSON with a "days" array. Each day has "day" (number), "date" (YYYY-MM-DD), and "activities" (array with "time", "name", "description"). Keep descriptions concise (under 15 words). Do NOT include any text outside the JSON.`;
 
     // Try OpenAI first
     if (OPENAI_API_KEY) {
@@ -295,7 +362,7 @@ export default async function handler(req, res) {
                     ],
                     response_format: { type: 'json_object' },
                     temperature: 0.3,
-                    max_tokens: 1500
+                    max_tokens: maxTokens
                 })
             });
 
@@ -347,6 +414,7 @@ export default async function handler(req, res) {
                     ],
                     format: 'json',
                     temperature: 0.3,
+                    num_predict: maxTokens,
                     stream: false
                 })
             });
@@ -401,7 +469,7 @@ export default async function handler(req, res) {
                     ],
                     response_format: { type: 'json_object' },
                     temperature: 0.3,
-                    max_tokens: 1500
+                    max_tokens: maxTokens
                 })
             });
 
@@ -451,6 +519,18 @@ export default async function handler(req, res) {
                         return res.status(200).json({ source: 'openrouter', ...normalized });
                     } catch (parseErr) {
                         console.log('[OpenRouter] JSON parse FAILED:', parseErr.message);
+                        // Try to repair truncated JSON
+                        const repaired = repairTruncatedJson(content);
+                        if (repaired) {
+                            console.log('[OpenRouter] JSON repair: SUCCESS');
+                            const normalized = normalizeItinerary(repaired);
+                            console.log('[OpenRouter] Repaired normalized days:', normalized?.days?.length);
+                            if (normalized.days) {
+                                return res.status(200).json({ source: 'openrouter-repaired', ...normalized });
+                            }
+                        } else {
+                            console.log('[OpenRouter] JSON repair: FAILED');
+                        }
                         // JSON parse failed - try text parsing
                         const textParsed = parseTextItinerary(content);
                         console.log('[OpenRouter] Text parse:', !!textParsed);
