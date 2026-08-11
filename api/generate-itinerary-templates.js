@@ -34,7 +34,7 @@ var templates = {
 function getActivities(interests) {
     const activities = [];
     const timeSlots = ['Morning', 'Afternoon', 'Evening'];
-    
+
     timeSlots.forEach((time, index) => {
         const interest = interests[index % interests.length];
         const template = templates[interest] || templates.default;
@@ -44,13 +44,13 @@ function getActivities(interests) {
             description: template[time].description
         });
     });
-    
+
     return activities;
 }
 
 export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
-    
+
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -62,13 +62,14 @@ export default async function handler(req, res) {
     }
 
     // Template-based itinerary (no AI, 100% free)
-    const daysCount = Math.max(1, (new Date(endDate) - new Date(startDate)) / 86400000 + 1);
-    
+    const daysCount = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+    const selectedInterests = Array.isArray(interests) && interests.length > 0 ? interests : ['default'];
+
     const itinerary = {
         days: Array.from({ length: daysCount }, (_, i) => ({
             day: `Day ${i + 1}`,
             date: new Date(new Date(startDate).getTime() + i * 86400000).toDateString(),
-            activities: getActivities(interests.length > 0 ? interests : ['default'])
+            activities: getActivities(selectedInterests)
         }))
     };
 

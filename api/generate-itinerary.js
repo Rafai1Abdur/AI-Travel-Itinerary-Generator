@@ -5,179 +5,129 @@
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+// Only attempt Ollama if explicitly configured (prevents timeout delays when not installed)
+// OLLAMA_ENABLED takes precedence; if unset, fall back to checking OLLAMA_URL (backward compat)
+const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED === 'true' || (process.env.OLLAMA_ENABLED === undefined && !!process.env.OLLAMA_URL);
+
+function capitalizeTime(time) {
+    if (typeof time !== 'string') return time || '';
+    const lower = time.toLowerCase();
+    if (lower === 'morning' || lower === 'am') return 'Morning';
+    if (lower === 'afternoon' || lower === 'midday') return 'Afternoon';
+    if (lower === 'evening' || lower === 'pm') return 'Evening';
+    if (lower === 'night' || lower === 'late') return 'Night';
+    return time;
+}
+
+function normalizeTimeLabel(time, actIdx) {
+    if (typeof time === 'string' && /^\d{1,2}:\d{2}/.test(time)) {
+        const hour = parseInt(time.split(':')[0]);
+        if (hour < 6) return 'Night';
+        if (hour < 12) return 'Morning';
+        if (hour < 17) return 'Afternoon';
+        if (hour < 21) return 'Evening';
+        return 'Night';
+    }
+    if (time) return capitalizeTime(time);
+    if (actIdx < 1) return 'Morning';
+    if (actIdx < 3) return 'Afternoon';
+    return 'Evening';
+}
+
+function normalizeActivity(act, actIdx) {
+    if (typeof act === 'string') {
+        return {
+            time: actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening',
+            name: act,
+            description: ''
+        };
+    }
+    return {
+        time: normalizeTimeLabel(act.time, actIdx),
+        name: act.name || act.activity || 'Unknown',
+        description: act.description || ''
+    };
+}
+
+function normalizeDay(day, idx, fallbackDate) {
+    let dayLabel = day.day;
+    if (typeof day.day === 'number') {
+        dayLabel = `Day ${day.day}`;
+    } else if (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day)) {
+        dayLabel = `Day ${idx + 1}`;
+    } else if (typeof day.day === 'string' && !day.day.startsWith('Day ')) {
+        dayLabel = `Day ${day.day}`;
+    } else if (typeof day.day === 'undefined') {
+        dayLabel = `Day ${idx + 1}`;
+    }
+
+    let normalizedDate = day.date || fallbackDate || '';
+    if (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.date)) {
+        normalizedDate = new Date(day.date + 'T00:00:00').toDateString();
+    } else if (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day)) {
+        normalizedDate = new Date(day.day + 'T00:00:00').toDateString();
+    }
+
+    let activities = [];
+    if (day.activities && Array.isArray(day.activities)) {
+        activities = day.activities.map(normalizeActivity);
+    }
+
+    return {
+        day: dayLabel,
+        date: normalizedDate,
+        location: day.location || '',
+        activities
+    };
+}
 
 function normalizeItinerary(data) {
     if (!data) return data;
 
-    let itinerary = data;
+    let days = null;
+    let meta = {};
 
-    // Handle { travelItinerary: { itinerary: [...] } } format (latest OpenRouter response)
-    // Note: this is handled in script.js; server-side normalization covers the other formats
-    if (data.travelItinerary && data.travelItinerary.itinerary && Array.isArray(data.travelItinerary.itinerary)) {
-        itinerary = {
-            days: data.travelItinerary.itinerary.map((day, idx) => {
-                let dayLabel = day.day;
-                if (typeof day.day === 'number') {
-                    dayLabel = `Day ${day.day}`;
-                } else if (typeof day.day === 'string' && !day.day.startsWith('Day ')) {
-                    dayLabel = `Day ${day.day}`;
-                }
-                const normalizedDate = (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.date))
-                    ? new Date(day.date + 'T00:00:00').toDateString()
-                    : (data.travelItinerary.dates ? data.travelItinerary.dates.start : '');
-                let activities = (day.activities || []).map((act, actIdx) => {
-                    let timeLabel;
-                    let actName;
-                    let actDesc;
-                    if (typeof act === 'string') {
-                        timeLabel = actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening';
-                        actName = act;
-                        actDesc = '';
-                    } else {
-                        timeLabel = act.time ? capitalizeTime(act.time) : (actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening');
-                        actName = act.name || act.activity || 'Unknown';
-                        actDesc = act.description || '';
-                    }
-                    return { time: timeLabel, name: actName, description: actDesc };
-                });
-                return { day: dayLabel, date: normalizedDate, location: day.location || '', activities };
-            })
+    // Format 1: { days: [...] }
+    if (Array.isArray(data.days)) {
+        days = data.days;
+    }
+    // Format 2: { travelItinerary: { itinerary: [...] } }
+    else if (data.travelItinerary && Array.isArray(data.travelItinerary.itinerary)) {
+        days = data.travelItinerary.itinerary;
+        meta = {
+            destination: data.travelItinerary.destination,
+            fallbackDate: data.travelItinerary.dates?.start || ''
         };
     }
-    // Handle { itinerary: { days: [...] } } format (OpenRouter format with ISO dates)
-    else if (data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
-    if (data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
-        itinerary = {
-            days: data.itinerary.days.map((day, idx) => {
-                let dayLabel = day.day;
-                if (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day)) {
-                    dayLabel = `Day ${idx + 1}`;
-                } else if (typeof day.day === 'number') {
-                    dayLabel = `Day ${day.day}`;
-                } else if (typeof day.day === 'string' && !day.day.startsWith('Day ')) {
-                    dayLabel = `Day ${day.day}`;
-                }
-                const normalizedDate = (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day))
-                    ? new Date(day.day + 'T00:00:00').toDateString()
-                    : (data.itinerary.travel_dates ? data.itinerary.travel_dates.start : '');
-                let activities = day.activities || [];
-                activities = activities.map((act, actIdx) => {
-                    let timeLabel;
-                    if (actIdx < 1) timeLabel = 'Morning';
-                    else if (actIdx < 3) timeLabel = 'Afternoon';
-                    else timeLabel = 'Evening';
-                    return {
-                        time: timeLabel,
-                        name: act.name || act.activity || 'Unknown',
-                        description: act.description || ''
-                    };
-                });
-                return { day: dayLabel, date: normalizedDate, activities };
-            })
+    // Format 3: { itinerary: { days: [...] } }
+    else if (data.itinerary && Array.isArray(data.itinerary.days)) {
+        days = data.itinerary.days;
+        meta = {
+            destination: data.itinerary.destination,
+            fallbackDate: data.itinerary.travel_dates?.start || ''
         };
     }
-    // Handle { itinerary: { destinations: [...] } } format
-    else if (data.itinerary && data.itinerary.destinations) {
-        itinerary = {
-            days: data.itinerary.destinations.map((dest, idx) => ({
-                day: `Day ${idx + 1}`,
-                date: dest.date,
-                location: dest.location,
-                activities: (dest.activities || []).map(act => ({
-                    time: act.time || (actIdx => {
-                        if (actIdx < 1) return 'Morning';
-                        if (actIdx < 3) return 'Afternoon';
-                        return 'Evening';
-                    })(0),
-                    name: act.activity || act.name || 'Unknown',
-                    description: act.description || ''
-                }))
-            }))
-        };
+    // Format 4: { itinerary: { destinations: [...] } }
+    else if (data.itinerary && Array.isArray(data.itinerary.destinations)) {
+        days = data.itinerary.destinations;
+        meta = { destination: data.itinerary.destination };
     }
-    // Handle standard { days: [...] } format
-    else if (data.days) {
-        itinerary = data;
-    } else {
-        return data;
+    // Format 5: top-level array
+    else if (Array.isArray(data)) {
+        days = data;
     }
+
+    if (!days) return data;
 
     return {
-        ...itinerary,
-        days: itinerary.days.map(day => {
-            let dayLabel = day.day;
-            if (typeof day.day === 'number') {
-                dayLabel = `Day ${day.day}`;
-            } else if (typeof day.day === 'string') {
-                const dayNum = parseInt(day.day);
-                if (!isNaN(dayNum) && dayNum > 0) {
-                    dayLabel = `Day ${dayNum}`;
-                } else if (!day.day.startsWith('Day ')) {
-                    dayLabel = `Day ${day.day}`;
-                }
-            }
-            let normalizedDate = day.date || '';
-            if (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.date)) {
-                normalizedDate = new Date(day.date + 'T00:00:00').toDateString();
-            }
-            let activities = day.activities;
-            if (activities && Array.isArray(activities)) {
-                activities = activities.map((act, actIdx) => {
-                    let timeLabel = act.time;
-                    if (typeof act.time === 'string' && /^\d{1,2}:\d{2}/.test(act.time)) {
-                        const hour = parseInt(act.time.split(':')[0]);
-                        if (hour < 6) timeLabel = 'Night';
-                        else if (hour < 12) timeLabel = 'Morning';
-                        else if (hour < 17) timeLabel = 'Afternoon';
-                        else if (hour < 21) timeLabel = 'Evening';
-                        else timeLabel = 'Night';
-                    } else if (!act.time) {
-                        if (actIdx < 1) timeLabel = 'Morning';
-                        else if (actIdx < 3) timeLabel = 'Afternoon';
-                        else timeLabel = 'Evening';
-                    } else {
-                        timeLabel = capitalizeTime(act.time);
-                    }
-                    return {
-                        time: timeLabel,
-                        name: act.name || act.activity || 'Unknown',
-                        description: act.description || ''
-                    };
-                });
-            }
-            return {
-                day: dayLabel,
-                date: normalizedDate,
-                location: day.location || '',
-                activities
-            };
-        })
+        ...(meta.destination ? { destination: meta.destination } : {}),
+        days: days.map((day, idx) => normalizeDay(day, idx, meta.fallbackDate))
     };
-}
-
-function capitalizeTime(time) {
-    if (typeof time !== 'string') return time || '';
-    const lower = time.toLowerCase();
-    if (lower === 'morning' || lower === 'am') return 'Morning';
-    if (lower === 'afternoon' || lower === 'midday') return 'Afternoon';
-    if (lower === 'evening' || lower === 'pm') return 'Evening';
-    if (lower === 'night' || lower === 'late') return 'Night';
-    return time;
-}
-
-function capitalizeTime(time) {
-    if (typeof time !== 'string') return time || '';
-    const lower = time.toLowerCase();
-    if (lower === 'morning' || lower === 'am') return 'Morning';
-    if (lower === 'afternoon' || lower === 'midday') return 'Afternoon';
-    if (lower === 'evening' || lower === 'pm') return 'Evening';
-    if (lower === 'night' || lower === 'late') return 'Night';
-    return time;
 }
 
 export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
-    
+
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -188,9 +138,12 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Calculate inclusive day count (handles DST edge cases)
+    const dayCount = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+
     // Generate mock fallback (no AI costs)
     const mockItinerary = {
-        days: Array.from({ length: (new Date(endDate) - new Date(startDate)) / 86400000 + 1 }, (_, i) => ({
+        days: Array.from({ length: dayCount }, (_, i) => ({
             day: `Day ${i + 1}`,
             date: new Date(new Date(startDate).getTime() + i * 86400000).toDateString(),
             activities: [
@@ -200,6 +153,8 @@ export default async function handler(req, res) {
             ]
         }))
     };
+
+    const prompt = `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}. Return only JSON with a "days" array. Each day has "day", "date", and "activities" (array with "time", "name", "description").`;
 
     // Try OpenAI first
     if (OPENAI_API_KEY) {
@@ -214,7 +169,7 @@ export default async function handler(req, res) {
                     model: 'gpt-4.1-mini',
                     messages: [
                         { role: 'system', content: 'You are a travel expert. Output only valid JSON.' },
-                        { role: 'user', content: `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ')}. Return only JSON.` }
+                        { role: 'user', content: prompt }
                     ],
                     response_format: { type: 'json_object' },
                     max_tokens: 1500
@@ -236,33 +191,36 @@ export default async function handler(req, res) {
         }
     }
 
-    // Try Ollama (local, free)
-    try {
-        const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: 'llama3.1:8b',
-                messages: [
-                    { role: 'system', content: 'You are a travel expert. Output only valid JSON.' },
-                    { role: 'user', content: `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ')}. Return only JSON.` }
-                ],
-                stream: false
-            })
-        });
+    // Try Ollama (local, free) - only if explicitly configured
+    if (OLLAMA_ENABLED) {
+        try {
+            const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'llama3.1:8b',
+                    messages: [
+                        { role: 'system', content: 'You are a travel expert. Output only valid JSON.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    format: 'json',
+                    stream: false
+                })
+            });
 
-        if (response.ok) {
-            const result = await response.json();
-            if (result.message?.content) {
-                try {
-                    return res.status(200).json(normalizeItinerary(JSON.parse(result.message.content)));
-                } catch {
-                    return res.status(200).json(mockItinerary);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.message?.content) {
+                    try {
+                        return res.status(200).json(normalizeItinerary(JSON.parse(result.message.content)));
+                    } catch {
+                        return res.status(200).json(mockItinerary);
+                    }
                 }
             }
+        } catch (error) {
+            console.log('Ollama error, using mock data:', error.message);
         }
-    } catch (error) {
-        console.log('Ollama error, using mock data:', error.message);
     }
 
     // Try OpenRouter (unified AI access)
@@ -280,7 +238,7 @@ export default async function handler(req, res) {
                     model: 'openai/gpt-4o-mini',
                     messages: [
                         { role: 'system', content: 'You are a travel expert. Output only valid JSON.' },
-                        { role: 'user', content: `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ')}. Return only JSON.` }
+                        { role: 'user', content: prompt }
                     ],
                     response_format: { type: 'json_object' },
                     max_tokens: 1500

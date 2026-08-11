@@ -41,15 +41,15 @@ const templates = {
 };
 
 function generateItinerary(destination, startDate, endDate, interests) {
-    const daysCount = Math.max(1, (new Date(endDate) - new Date(startDate)) / 86400000 + 1);
-    
+    const daysCount = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+
     return {
         days: Array.from({ length: daysCount }, (_, i) => {
-            const interest = interests && interests.length > 0 
-                ? interests[Math.floor(i % interests.length)] 
+            const interest = interests && interests.length > 0
+                ? interests[Math.floor(i % interests.length)]
                 : 'default';
             const template = templates[interest] || templates.default;
-            
+
             return {
                 day: `Day ${i + 1}`,
                 date: new Date(new Date(startDate).getTime() + i * 86400000).toDateString(),
@@ -73,9 +73,9 @@ const server = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
+
     if (req.method === 'OPTIONS') return res.end();
-    
+
     if (req.url === '/api/generate-itinerary' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => body += chunk);
@@ -84,9 +84,9 @@ const server = createServer(async (req, res) => {
                 const data = body.trim() ? JSON.parse(body) : {};
                 console.log('Request:', data.destination || 'no dest', data.startDate || 'no start', data.endDate || 'no end');
                 const itinerary = generateItinerary(
-                    data.destination || 'Paris', 
-                    data.startDate || '2026-07-01', 
-                    data.endDate || '2026-07-03', 
+                    data.destination || 'Paris',
+                    data.startDate || '2026-07-01',
+                    data.endDate || '2026-07-03',
                     data.interests || []
                 );
                 res.setHeader('Content-Type', 'application/json');
@@ -98,11 +98,12 @@ const server = createServer(async (req, res) => {
             }
         });
     } else {
-        const path = req.url === '/' ? '/index.html' : req.url;
+        // Strip query string and hash from URL before resolving file path
+        const cleanUrl = (req.url === '/' ? '/index.html' : req.url).split('?')[0].split('#')[0];
         try {
-            const ext = path.substring(path.lastIndexOf('.'));
+            const ext = cleanUrl.substring(cleanUrl.lastIndexOf('.'));
             res.setHeader('Content-Type', mimeTypes[ext] || 'text/plain');
-            const file = await readFile(join(__dirname, '.' + path));
+            const file = await readFile(join(__dirname, '.' + cleanUrl));
             res.end(file);
         } catch {
             res.statusCode = 404;

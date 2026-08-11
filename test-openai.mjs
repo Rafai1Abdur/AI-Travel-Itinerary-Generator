@@ -1,17 +1,27 @@
 import { readFileSync } from 'fs';
+import { existsSync } from 'fs';
 
-const env = readFileSync('.env', 'utf8');
-const lines = env.split('\n');
 let OPENAI_API_KEY = null;
 let OPENROUTER_API_KEY = null;
-for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('OPENAI_API_KEY=') && !trimmed.startsWith('#')) {
-        OPENAI_API_KEY = trimmed.split('=').slice(1).join('=');
+
+try {
+    if (existsSync('.env')) {
+        const env = readFileSync('.env', 'utf8');
+        const lines = env.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('OPENAI_API_KEY=') && !trimmed.startsWith('#')) {
+                OPENAI_API_KEY = trimmed.split('=').slice(1).join('=');
+            }
+            if (trimmed.startsWith('OPENROUTER_API_KEY=') && !trimmed.startsWith('#')) {
+                OPENROUTER_API_KEY = trimmed.split('=').slice(1).join('=');
+            }
+        }
+    } else {
+        console.log('Warning: .env file not found. Copy .env.example to .env and add your API keys.');
     }
-    if (trimmed.startsWith('OPENROUTER_API_KEY=') && !trimmed.startsWith('#')) {
-        OPENROUTER_API_KEY = trimmed.split('=').slice(1).join('=');
-    }
+} catch (err) {
+    console.log('Warning: Could not read .env file:', err.message);
 }
 
 const payload = {

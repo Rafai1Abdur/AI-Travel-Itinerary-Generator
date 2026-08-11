@@ -3,6 +3,5 @@
     "api/generate-itinerary.js": {
       "maxDuration": 60
     }
-  },
-  "outputDirectory": "."
+  }
 }

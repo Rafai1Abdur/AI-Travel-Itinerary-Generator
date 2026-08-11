@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         const formData = new FormData(form);
         const data = {
             destination: sanitizeInput(formData.get('destination')),
@@ -25,18 +25,13 @@ document.addEventListener('DOMContentLoaded', () => {
         clearError();
 
         try {
-            console.log('Sending request:', data);
             const response = await fetch('/api/generate-itinerary', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
 
-            console.log('Response status:', response.status);
             const itinerary = await response.json();
-            console.log('Received itinerary:', JSON.stringify(itinerary, null, 2));
-            const daysCount = itinerary.days ? itinerary.days.length : (itinerary.itinerary ? (itinerary.itinerary.days ? itinerary.itinerary.days.length : itinerary.itinerary.destinations ? itinerary.itinerary.destinations.length : 0) : 0);
-            console.log('Days count:', daysCount);
             renderItinerary(itinerary);
         } catch (err) {
             console.error('Fetch error:', err);
@@ -47,30 +42,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function validateForm(data) {
-        const start = new Date(data.startDate);
-        const end = new Date(data.endDate);
-        
         if (!data.destination || data.destination.length > 100) {
             showError('Please enter a valid destination.');
             return false;
         }
-        
+
+        const start = new Date(data.startDate);
+        const end = new Date(data.endDate);
+
+        // Reject invalid dates (NaN timestamps) and ensure end > start
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            showError('Please enter valid dates.');
+            return false;
+        }
+
         if (end <= start) {
             showError('End date must be after start date.');
             return false;
         }
-        
+
         return true;
     }
 
     function sanitizeInput(str) {
-        return str.replace(/[<>'"&]/g, (char) => ({
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#x27;',
-            '&': '&amp;'
-        }[char]));
+        if (typeof str !== 'string') return '';
+        // Strip control characters (including NUL) which could cause prompt injection issues
+        return str.replace(/[\u0000-\u001F\u007F]/g, '').trim();
     }
 
     function setLoading(show) {
@@ -102,32 +99,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let days = [];
         let meta = {};
-        let sourceFormat = '';
 
         // Detect format and extract days array
         if (data && Array.isArray(data)) {
             days = data;
-            sourceFormat = 'array';
         } else if (data && data.days && Array.isArray(data.days)) {
             days = data.days;
-            sourceFormat = 'top-level-days';
         } else if (data && data.travelItinerary && data.travelItinerary.itinerary && Array.isArray(data.travelItinerary.itinerary)) {
             days = data.travelItinerary.itinerary;
             meta = { destination: data.travelItinerary.destination };
-            sourceFormat = 'travelItinerary';
         } else if (data && data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
             days = data.itinerary.days;
             meta = data.itinerary;
-            sourceFormat = 'nested-itinerary-days';
         } else if (data && data.itinerary && data.itinerary.destinations && Array.isArray(data.itinerary.destinations)) {
             days = data.itinerary.destinations;
             meta = { destination: data.itinerary.destination };
-            sourceFormat = 'nested-itinerary-destinations';
         }
 
         if (days.length === 0) {
             showError('Invalid response from server');
-            console.error('renderItinerary: No days found. data keys:', Object.keys(data || {}), 'format:', sourceFormat);
+            console.error('renderItinerary: No days found. data keys:', Object.keys(data || {}));
             return;
         }
 
@@ -150,15 +141,31 @@ document.addEventListener('DOMContentLoaded', () => {
             let dateLabel = day.date || '';
             if (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.date)) {
                 dateLabel = new Date(day.date + 'T00:00:00').toDateString();
-            } else if (typeof day.date === 'string') {
-                dateLabel = day.date;
             }
 
-            const locationLabel = day.location ? ` <span class="day-location">(${day.location})</span>` : '';
-            const metaLabel = meta.destination ? ` <span class="day-destination">${meta.destination}</span>` : '';
+            // Build header using textContent (XSS-safe)
+            const header = document.createElement('div');
+            header.className = 'day-header';
+            header.textContent = `${dayLabel}: ${dateLabel}`;
 
-            const activitiesHtml = day.activities && day.activities.length > 0
-                ? day.activities.map((activity, actIdx) => {
+            if (day.location) {
+                const locationSpan = document.createElement('span');
+                locationSpan.className = 'day-location';
+                locationSpan.textContent = ` (${day.location})`;
+                header.appendChild(locationSpan);
+            }
+
+            if (meta.destination) {
+                const destSpan = document.createElement('span');
+                destSpan.className = 'day-destination';
+                destSpan.textContent = ` ${meta.destination}`;
+                header.appendChild(destSpan);
+            }
+
+            card.appendChild(header);
+
+            if (day.activities && day.activities.length > 0) {
+                day.activities.forEach((activity, actIdx) => {
                     let timeLabel;
                     let actName;
                     let actDesc;
@@ -173,20 +180,35 @@ document.addEventListener('DOMContentLoaded', () => {
                         actDesc = activity.description || '';
                     }
 
-                    return `
-                    <div class="activity">
-                        <div class="activity-time">${timeLabel}</div>
-                        <div class="activity-name">${actName}</div>
-                        ${actDesc ? `<div class="activity-desc">${actDesc}</div>` : ''}
-                    </div>
-                `;
-                }).join('')
-                : '<div class="activity">No activities planned</div>';
+                    // Build activity using textContent (XSS-safe)
+                    const activityDiv = document.createElement('div');
+                    activityDiv.className = 'activity';
 
-            card.innerHTML = `
-                <div class="day-header">${dayLabel}${metaLabel}: ${dateLabel}${locationLabel}</div>
-                ${activitiesHtml}
-            `;
+                    const timeDiv = document.createElement('div');
+                    timeDiv.className = 'activity-time';
+                    timeDiv.textContent = timeLabel;
+                    activityDiv.appendChild(timeDiv);
+
+                    const nameDiv = document.createElement('div');
+                    nameDiv.className = 'activity-name';
+                    nameDiv.textContent = actName;
+                    activityDiv.appendChild(nameDiv);
+
+                    if (actDesc) {
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'activity-desc';
+                        descDiv.textContent = actDesc;
+                        activityDiv.appendChild(descDiv);
+                    }
+
+                    card.appendChild(activityDiv);
+                });
+            } else {
+                const noActivity = document.createElement('div');
+                noActivity.className = 'activity';
+                noActivity.textContent = 'No activities planned';
+                card.appendChild(noActivity);
+            }
 
             results.appendChild(card);
         });
