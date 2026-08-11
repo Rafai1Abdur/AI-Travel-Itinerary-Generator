@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Travel Itinerary Generator</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <header class="header">
         <h1 class="logo">TravelGenie</h1>
@@ -16,7 +20,8 @@
         <form id="itinerary-form" class="travel-form">
             <div class="form-group">
                 <label for="destination">Destination</label>
-                <input type="text" id="destination" name="destination" required maxlength="100" placeholder="e.g., Paris, France">
+                <input type="text" id="destination" name="destination" required maxlength="100"
+                    placeholder="e.g., Paris, France">
             </div>
 
             <div class="form-row">
@@ -87,14 +92,15 @@
         <section id="results" class="results hidden"></section>
 
         <div id="error" class="error-banner hidden"></div>
-        
+
         <section class="ai-info-card">
             <h3>Want AI-Powered Itineraries?</h3>
             <p>Download this project and enable AI features:</p>
             <div class="ai-options">
                 <div class="ai-option">
                     <strong>Option 1: Ollama (Free)</strong>
-                    <span>Run locally - no API key needed. Install from <a href="https://ollama.com" target="_blank">ollama.com</a></span>
+                    <span>Run locally - no API key needed. Install from <a href="https://ollama.com"
+                            target="_blank">ollama.com</a></span>
                 </div>
                 <div class="ai-option">
                     <strong>Option 2: OpenAI API</strong>
@@ -106,4 +112,5 @@
 
     <script src="script.js"></script>
 </body>
+
 </html>

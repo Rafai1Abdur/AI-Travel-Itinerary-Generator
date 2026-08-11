@@ -9,6 +9,14 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 // OLLAMA_ENABLED takes precedence; if unset, fall back to checking OLLAMA_URL (backward compat)
 const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED === 'true' || (process.env.OLLAMA_ENABLED === undefined && !!process.env.OLLAMA_URL);
 
+// Configuration status (logged at handler start for debugging)
+console.log('[AI Config]', {
+    openai: !!OPENAI_API_KEY,
+    openrouter: !!OPENROUTER_API_KEY,
+    ollama: OLLAMA_ENABLED,
+    ollamaUrl: OLLAMA_URL
+});
+
 function capitalizeTime(time) {
     if (typeof time !== 'string') return time || '';
     const lower = time.toLowerCase();
@@ -248,27 +256,31 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Calculate inclusive day count (handles DST edge cases)
-    const dayCount = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+    // Configuration message when no AI provider is available
+    const configError = (provider) => ({
+        error: provider
+            ? `${provider} failed. Please check your API configuration.`
+            : 'Please Configure Ollama, OpenAI/OpenRouter API key',
+        source: provider ? 'provider-error' : 'unconfigured'
+    });
 
-    // Generate mock fallback (no AI costs)
-    const mockItinerary = {
-        days: Array.from({ length: dayCount }, (_, i) => ({
-            day: `Day ${i + 1}`,
-            date: new Date(new Date(startDate).getTime() + i * 86400000).toDateString(),
-            activities: [
-                { time: 'Morning', name: 'Sightseeing', description: `Explore ${destination}` },
-                { time: 'Afternoon', name: 'Lunch', description: 'Try local cuisine' },
-                { time: 'Evening', name: 'Relaxation', description: 'Rest at accommodation' }
-            ]
-        }))
-    };
+    // Log request for debugging
+    console.log('[Request]', {
+        destination,
+        startDate,
+        endDate,
+        budget,
+        travelers,
+        travelStyle,
+        interests
+    });
 
     const prompt = `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate}. Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}. Return only JSON with a "days" array. Each day has "day", "date", and "activities" (array with "time", "name", "description").`;
 
     // Try OpenAI first
     if (OPENAI_API_KEY) {
         try {
+            console.log('[OpenAI] Attempting request...');
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -287,6 +299,12 @@ export default async function handler(req, res) {
                 })
             });
 
+            console.log('[OpenAI] Response status:', response.status);
+            if (!response.ok) {
+                const errText = await response.text();
+                console.log('[OpenAI] Error response:', errText.substring(0, 200));
+            }
+
             if (response.ok) {
                 const result = await response.json();
                 if (result.choices?.[0]?.message?.content) {
@@ -297,25 +315,27 @@ export default async function handler(req, res) {
                         // If normalization returned the raw data (no days found), try text parsing
                         if (!normalized.days) {
                             const textParsed = parseTextItinerary(content);
-                            if (textParsed) return res.status(200).json(textParsed);
+                            if (textParsed) return res.status(200).json({ source: 'openai-text-parsed', ...textParsed });
                         }
-                        return res.status(200).json(normalized);
+                        return res.status(200).json({ source: 'openai', ...normalized });
                     } catch {
                         // JSON parse failed - try text parsing
                         const textParsed = parseTextItinerary(content);
-                        if (textParsed) return res.status(200).json(textParsed);
-                        return res.status(200).json(mockItinerary);
+                        if (textParsed) return res.status(200).json({ source: 'openai-text-parsed', ...textParsed });
+                        return res.status(503).json(configError('OpenAI'));
                     }
                 }
             }
         } catch (error) {
-            console.log('OpenAI error, falling back:', error.message);
+            console.log('[OpenAI] Request error:', error.message);
+            return res.status(503).json(configError('OpenAI'));
         }
     }
 
     // Try Ollama (local, free) - only if explicitly configured
     if (OLLAMA_ENABLED) {
         try {
+            console.log('[Ollama] Attempting request...');
             const response = await fetch(`${OLLAMA_URL}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -331,6 +351,12 @@ export default async function handler(req, res) {
                 })
             });
 
+            console.log('[Ollama] Response status:', response.status);
+            if (!response.ok) {
+                const errText = await response.text();
+                console.log('[Ollama] Error response:', errText.substring(0, 200));
+            }
+
             if (response.ok) {
                 const result = await response.json();
                 if (result.message?.content) {
@@ -340,24 +366,25 @@ export default async function handler(req, res) {
                         const normalized = normalizeItinerary(parsed);
                         if (!normalized.days) {
                             const textParsed = parseTextItinerary(content);
-                            if (textParsed) return res.status(200).json(textParsed);
+                            if (textParsed) return res.status(200).json({ source: 'ollama-text-parsed', ...textParsed });
                         }
-                        return res.status(200).json(normalized);
+                        return res.status(200).json({ source: 'ollama', ...normalized });
                     } catch {
                         const textParsed = parseTextItinerary(content);
-                        if (textParsed) return res.status(200).json(textParsed);
-                        return res.status(200).json(mockItinerary);
+                        if (textParsed) return res.status(200).json({ source: 'ollama-text-parsed', ...textParsed });
+                        return res.status(503).json(configError('Ollama'));
                     }
                 }
             }
         } catch (error) {
-            console.log('Ollama error, using mock data:', error.message);
+            console.log('[Ollama] Request error:', error.message);
         }
     }
 
     // Try OpenRouter (unified AI access)
     if (OPENROUTER_API_KEY) {
         try {
+            console.log('[OpenRouter] Attempting request...');
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -378,6 +405,12 @@ export default async function handler(req, res) {
                 })
             });
 
+            console.log('[OpenRouter] Response status:', response.status);
+            if (!response.ok) {
+                const errText = await response.text();
+                console.log('[OpenRouter] Error response:', errText.substring(0, 200));
+            }
+
             if (response.ok) {
                 const result = await response.json();
                 if (result.choices?.[0]?.message?.content) {
@@ -387,21 +420,33 @@ export default async function handler(req, res) {
                         const normalized = normalizeItinerary(parsed);
                         if (!normalized.days) {
                             const textParsed = parseTextItinerary(content);
-                            if (textParsed) return res.status(200).json(textParsed);
+                            if (textParsed) return res.status(200).json({ source: 'openrouter-text-parsed', ...textParsed });
                         }
-                        return res.status(200).json(normalized);
+                        return res.status(200).json({ source: 'openrouter', ...normalized });
                     } catch {
                         const textParsed = parseTextItinerary(content);
-                        if (textParsed) return res.status(200).json(textParsed);
-                        return res.status(200).json(mockItinerary);
+                        if (textParsed) return res.status(200).json({ source: 'openrouter-text-parsed', ...textParsed });
+                        return res.status(503).json(configError('OpenRouter'));
                     }
                 }
             }
         } catch (error) {
-            console.log('OpenRouter error, falling back:', error.message);
+            console.log('[OpenRouter] Request error:', error.message);
         }
     }
 
-    // Fallback to mock data
-    res.status(200).json(mockItinerary);
+    // No AI provider configured or all failed - show configuration message
+    const configuredProviders = [];
+    if (OPENAI_API_KEY) configuredProviders.push('OpenAI');
+    if (OPENROUTER_API_KEY) configuredProviders.push('OpenRouter');
+    if (OLLAMA_ENABLED) configuredProviders.push('Ollama');
+
+    if (configuredProviders.length > 0) {
+        console.log('[AI] All configured providers failed:', configuredProviders.join(', '));
+        return res.status(503).json(configError(configuredProviders.join(' / ')));
+    }
+
+    // No provider configured at all
+    console.log('[AI] No AI provider configured');
+    res.status(503).json(configError(null));
 }
