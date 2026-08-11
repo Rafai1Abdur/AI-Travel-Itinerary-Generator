@@ -81,6 +81,105 @@ function normalizeDay(day, idx, fallbackDate) {
     };
 }
 
+/**
+ * Recursively search any JSON structure for a "days-like" array.
+ * A days-like array is an array of objects that have at least one of:
+ * day, date, location, activities, itinerary, schedule, plan keys.
+ * This handles unexpected wrapper formats from AI providers.
+ */
+function findDaysArray(obj, depth = 0) {
+    if (!obj || depth > 6) return null;
+
+    // If it's an array, check if it looks like a days array
+    if (Array.isArray(obj)) {
+        if (obj.length > 0 && obj.every(item => item && typeof item === 'object' && !Array.isArray(item))) {
+            const hasDayLike = obj.some(item =>
+                item.day !== undefined ||
+                item.date !== undefined ||
+                item.location !== undefined ||
+                item.activities !== undefined ||
+                item.itinerary !== undefined ||
+                item.schedule !== undefined ||
+                item.plan !== undefined
+            );
+            if (hasDayLike) return obj;
+        }
+        // Search inside array elements
+        for (const item of obj) {
+            const found = findDaysArray(item, depth + 1);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // If it's an object, search its values
+    if (typeof obj === 'object') {
+        // Check common wrapper keys first
+        for (const key of ['days', 'itinerary', 'destinations', 'schedule', 'plan', 'trip', 'data', 'response', 'result', 'travelItinerary']) {
+            if (obj[key] !== undefined) {
+                const found = findDaysArray(obj[key], depth + 1);
+                if (found) return found;
+            }
+        }
+        // Then search all values
+        for (const value of Object.values(obj)) {
+            const found = findDaysArray(value, depth + 1);
+            if (found) return found;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Try to parse plain-text/markdown AI responses into a basic itinerary.
+ * Handles lines like "Day 1:", "Day 1 - Paris", "Morning: Visit Eiffel Tower", etc.
+ */
+function parseTextItinerary(text) {
+    if (typeof text !== 'string' || text.trim().length === 0) return null;
+
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const days = [];
+    let currentDay = null;
+
+    for (const line of lines) {
+        // Match "Day 1", "Day 1:", "Day 1 - Paris", "Day 1: Paris"
+        const dayMatch = line.match(/^day\s+(\d+)\s*[:.\-–—]?\s*(.*)$/i);
+        if (dayMatch) {
+            if (currentDay) days.push(currentDay);
+            currentDay = {
+                day: `Day ${dayMatch[1]}`,
+                date: '',
+                location: dayMatch[2] || '',
+                activities: []
+            };
+            continue;
+        }
+
+        // Match time slots: "Morning:", "Afternoon:", "Evening:", "Night:"
+        const timeMatch = line.match(/^(morning|afternoon|evening|night|am|pm)\s*[:.\-–—]?\s*(.*)$/i);
+        if (timeMatch && currentDay) {
+            const timeLabel = capitalizeTime(timeMatch[1]);
+            const activityName = timeMatch[2] || 'Activity';
+            currentDay.activities.push({ time: timeLabel, name: activityName, description: '' });
+            continue;
+        }
+
+        // Any other line while a day is active becomes an activity
+        if (currentDay) {
+            currentDay.activities.push({
+                time: currentDay.activities.length < 1 ? 'Morning' : currentDay.activities.length < 3 ? 'Afternoon' : 'Evening',
+                name: line,
+                description: ''
+            });
+        }
+    }
+
+    if (currentDay) days.push(currentDay);
+
+    return days.length > 0 ? { days } : null;
+}
+
 function normalizeItinerary(data) {
     if (!data) return data;
 
@@ -115,6 +214,17 @@ function normalizeItinerary(data) {
     // Format 5: top-level array
     else if (Array.isArray(data)) {
         days = data;
+    }
+    // Format 6: Deep-search fallback for ANY unexpected wrapper structure
+    else {
+        const found = findDaysArray(data);
+        if (found) {
+            days = found;
+            // Try to extract destination from the data
+            if (data.destination) meta.destination = data.destination;
+            else if (data.trip?.destination) meta.destination = data.trip.destination;
+            else if (data.data?.destination) meta.destination = data.data.destination;
+        }
     }
 
     if (!days) return data;
@@ -172,6 +282,7 @@ export default async function handler(req, res) {
                         { role: 'user', content: prompt }
                     ],
                     response_format: { type: 'json_object' },
+                    temperature: 0.3,
                     max_tokens: 1500
                 })
             });
@@ -179,9 +290,20 @@ export default async function handler(req, res) {
             if (response.ok) {
                 const result = await response.json();
                 if (result.choices?.[0]?.message?.content) {
+                    const content = result.choices[0].message.content;
                     try {
-                        return res.status(200).json(normalizeItinerary(JSON.parse(result.choices[0].message.content)));
+                        const parsed = JSON.parse(content);
+                        const normalized = normalizeItinerary(parsed);
+                        // If normalization returned the raw data (no days found), try text parsing
+                        if (!normalized.days) {
+                            const textParsed = parseTextItinerary(content);
+                            if (textParsed) return res.status(200).json(textParsed);
+                        }
+                        return res.status(200).json(normalized);
                     } catch {
+                        // JSON parse failed - try text parsing
+                        const textParsed = parseTextItinerary(content);
+                        if (textParsed) return res.status(200).json(textParsed);
                         return res.status(200).json(mockItinerary);
                     }
                 }
@@ -204,6 +326,7 @@ export default async function handler(req, res) {
                         { role: 'user', content: prompt }
                     ],
                     format: 'json',
+                    temperature: 0.3,
                     stream: false
                 })
             });
@@ -211,9 +334,18 @@ export default async function handler(req, res) {
             if (response.ok) {
                 const result = await response.json();
                 if (result.message?.content) {
+                    const content = result.message.content;
                     try {
-                        return res.status(200).json(normalizeItinerary(JSON.parse(result.message.content)));
+                        const parsed = JSON.parse(content);
+                        const normalized = normalizeItinerary(parsed);
+                        if (!normalized.days) {
+                            const textParsed = parseTextItinerary(content);
+                            if (textParsed) return res.status(200).json(textParsed);
+                        }
+                        return res.status(200).json(normalized);
                     } catch {
+                        const textParsed = parseTextItinerary(content);
+                        if (textParsed) return res.status(200).json(textParsed);
                         return res.status(200).json(mockItinerary);
                     }
                 }
@@ -241,6 +373,7 @@ export default async function handler(req, res) {
                         { role: 'user', content: prompt }
                     ],
                     response_format: { type: 'json_object' },
+                    temperature: 0.3,
                     max_tokens: 1500
                 })
             });
@@ -248,9 +381,18 @@ export default async function handler(req, res) {
             if (response.ok) {
                 const result = await response.json();
                 if (result.choices?.[0]?.message?.content) {
+                    const content = result.choices[0].message.content;
                     try {
-                        return res.status(200).json(normalizeItinerary(JSON.parse(result.choices[0].message.content)));
+                        const parsed = JSON.parse(content);
+                        const normalized = normalizeItinerary(parsed);
+                        if (!normalized.days) {
+                            const textParsed = parseTextItinerary(content);
+                            if (textParsed) return res.status(200).json(textParsed);
+                        }
+                        return res.status(200).json(normalized);
                     } catch {
+                        const textParsed = parseTextItinerary(content);
+                        if (textParsed) return res.status(200).json(textParsed);
                         return res.status(200).json(mockItinerary);
                     }
                 }

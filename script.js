@@ -31,6 +31,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(data)
             });
 
+            // Check if the response is OK before parsing
+            if (!response.ok) {
+                let errorMsg = `Server error (${response.status})`;
+                try {
+                    const errData = await response.json();
+                    if (errData && errData.error) errorMsg = errData.error;
+                } catch {
+                    // Response wasn't JSON - try text
+                    try {
+                        const text = await response.text();
+                        if (text) errorMsg = text.substring(0, 200);
+                    } catch { /* ignore */ }
+                }
+                showError(errorMsg);
+                return;
+            }
+
             const itinerary = await response.json();
             renderItinerary(itinerary);
         } catch (err) {
@@ -94,6 +111,56 @@ document.addEventListener('DOMContentLoaded', () => {
         error.classList.add('hidden');
     }
 
+    /**
+     * Recursively search any JSON structure for a "days-like" array.
+     * A days-like array is an array of objects that have at least one of:
+     * day, date, location, activities, itinerary, schedule, plan keys.
+     * This handles unexpected wrapper formats from AI providers.
+     */
+    function findDaysArray(obj, depth = 0) {
+        if (!obj || depth > 6) return null;
+
+        // If it's an array, check if it looks like a days array
+        if (Array.isArray(obj)) {
+            if (obj.length > 0 && obj.every(item => item && typeof item === 'object' && !Array.isArray(item))) {
+                const hasDayLike = obj.some(item =>
+                    item.day !== undefined ||
+                    item.date !== undefined ||
+                    item.location !== undefined ||
+                    item.activities !== undefined ||
+                    item.itinerary !== undefined ||
+                    item.schedule !== undefined ||
+                    item.plan !== undefined
+                );
+                if (hasDayLike) return obj;
+            }
+            // Search inside array elements
+            for (const item of obj) {
+                const found = findDaysArray(item, depth + 1);
+                if (found) return found;
+            }
+            return null;
+        }
+
+        // If it's an object, search its values
+        if (typeof obj === 'object') {
+            // Check common wrapper keys first
+            for (const key of ['days', 'itinerary', 'destinations', 'schedule', 'plan', 'trip', 'data', 'response', 'result', 'travelItinerary']) {
+                if (obj[key] !== undefined) {
+                    const found = findDaysArray(obj[key], depth + 1);
+                    if (found) return found;
+                }
+            }
+            // Then search all values
+            for (const value of Object.values(obj)) {
+                const found = findDaysArray(value, depth + 1);
+                if (found) return found;
+            }
+        }
+
+        return null;
+    }
+
     function renderItinerary(data) {
         results.innerHTML = '';
 
@@ -114,11 +181,22 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (data && data.itinerary && data.itinerary.destinations && Array.isArray(data.itinerary.destinations)) {
             days = data.itinerary.destinations;
             meta = { destination: data.itinerary.destination };
+        } else {
+            // Deep-search fallback for ANY unexpected wrapper structure
+            const found = findDaysArray(data);
+            if (found) {
+                days = found;
+                if (data.destination) meta.destination = data.destination;
+                else if (data.trip?.destination) meta.destination = data.trip.destination;
+                else if (data.data?.destination) meta.destination = data.data.destination;
+            }
         }
 
         if (days.length === 0) {
-            showError('Invalid response from server');
-            console.error('renderItinerary: No days found. data keys:', Object.keys(data || {}));
+            // Show a diagnostic error with the actual response keys
+            const keys = data && typeof data === 'object' ? Object.keys(data).join(', ') : typeof data;
+            showError(`Invalid response from server. Received format with keys: ${keys || 'empty'}`);
+            console.error('renderItinerary: No days found. data:', data);
             return;
         }
 
