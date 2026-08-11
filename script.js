@@ -166,18 +166,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let days = [];
         let meta = {};
+        let overview = null;
+        let accommodations = null;
+        let packingList = null;
+        let travelTips = null;
 
-        // Detect format and extract days array
+        // Detect format and extract days array + metadata
         if (data && Array.isArray(data)) {
             days = data;
         } else if (data && data.days && Array.isArray(data.days)) {
             days = data.days;
+            overview = data.overview || null;
+            accommodations = data.accommodations || null;
+            packingList = data.packingList || null;
+            travelTips = data.travelTips || null;
         } else if (data && data.travelItinerary && data.travelItinerary.itinerary && Array.isArray(data.travelItinerary.itinerary)) {
             days = data.travelItinerary.itinerary;
             meta = { destination: data.travelItinerary.destination };
         } else if (data && data.itinerary && data.itinerary.days && Array.isArray(data.itinerary.days)) {
             days = data.itinerary.days;
             meta = data.itinerary;
+            overview = data.itinerary.overview || data.overview || null;
+            accommodations = data.itinerary.accommodations || data.accommodations || null;
+            packingList = data.itinerary.packingList || data.packingList || null;
+            travelTips = data.itinerary.travelTips || data.travelTips || null;
         } else if (data && data.itinerary && data.itinerary.destinations && Array.isArray(data.itinerary.destinations)) {
             days = data.itinerary.destinations;
             meta = { destination: data.itinerary.destination };
@@ -189,6 +201,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.destination) meta.destination = data.destination;
                 else if (data.trip?.destination) meta.destination = data.trip.destination;
                 else if (data.data?.destination) meta.destination = data.data.destination;
+                overview = data.overview || data.tripOverview || null;
+                accommodations = data.accommodations || data.hotels || null;
+                packingList = data.packingList || data.packing || null;
+                travelTips = data.travelTips || data.tips || null;
             }
         }
 
@@ -200,11 +216,121 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const destination = meta.destination || data?.destination || '';
+
+        // ======== Trip Overview Section ========
+        if (overview || destination) {
+            const overviewCard = document.createElement('div');
+            overviewCard.className = 'trip-overview-card';
+
+            if (destination) {
+                const destTitle = document.createElement('h2');
+                destTitle.className = 'trip-destination-title';
+                destTitle.textContent = `Your ${destination} Adventure`;
+                overviewCard.appendChild(destTitle);
+            }
+
+            if (overview) {
+                if (overview.summary) {
+                    const summary = document.createElement('p');
+                    summary.className = 'trip-overview-summary';
+                    summary.textContent = overview.summary;
+                    overviewCard.appendChild(summary);
+                }
+
+                const statsRow = document.createElement('div');
+                statsRow.className = 'trip-stats-row';
+                const stats = [
+                    { label: 'Total Days', value: days.length },
+                    { label: 'Total Activities', value: days.reduce((sum, d) => sum + (d.activities?.length || 0), 0) },
+                    { label: 'Budget', value: overview.totalBudget || '—' }
+                ];
+                stats.forEach(stat => {
+                    const statItem = document.createElement('div');
+                    statItem.className = 'trip-stat';
+                    const statValue = document.createElement('div');
+                    statValue.className = 'trip-stat-value';
+                    statValue.textContent = String(stat.value);
+                    const statLabel = document.createElement('div');
+                    statLabel.className = 'trip-stat-label';
+                    statLabel.textContent = stat.label;
+                    statItem.appendChild(statValue);
+                    statItem.appendChild(statLabel);
+                    statsRow.appendChild(statItem);
+                });
+                overviewCard.appendChild(statsRow);
+
+                if (overview.bestTimeToVisit) {
+                    const bestTime = document.createElement('p');
+                    bestTime.className = 'trip-best-time';
+                    bestTime.textContent = `🌤️ Best time to visit: ${overview.bestTimeToVisit}`;
+                    overviewCard.appendChild(bestTime);
+                }
+            }
+
+            results.appendChild(overviewCard);
+        }
+
+        // ======== Accommodations Section ========
+        if (accommodations && accommodations.length > 0) {
+            const accomSection = document.createElement('div');
+            accomSection.className = 'section-card';
+
+            const accomTitle = document.createElement('h3');
+            accomTitle.className = 'section-title';
+            accomTitle.textContent = '🏨 Accommodations';
+            accomSection.appendChild(accomTitle);
+
+            accommodations.forEach(hotel => {
+                const hotelItem = document.createElement('div');
+                hotelItem.className = 'hotel-item';
+
+                const hotelName = document.createElement('div');
+                hotelName.className = 'hotel-name';
+                hotelName.textContent = hotel.name || 'Hotel';
+                hotelItem.appendChild(hotelName);
+
+                const hotelDetails = document.createElement('div');
+                hotelDetails.className = 'hotel-details';
+                const parts = [];
+                if (hotel.area) parts.push(`📍 ${hotel.area}`);
+                if (hotel.pricePerNight) parts.push(`💰 ${hotel.pricePerNight}/night`);
+                if (hotel.rating) parts.push(`⭐ ${hotel.rating}`);
+                hotelDetails.textContent = parts.join(' • ');
+                hotelItem.appendChild(hotelDetails);
+
+                if (hotel.note) {
+                    const hotelNote = document.createElement('div');
+                    hotelNote.className = 'hotel-note';
+                    hotelNote.textContent = hotel.note;
+                    hotelItem.appendChild(hotelNote);
+                }
+
+                accomSection.appendChild(hotelItem);
+            });
+
+            results.appendChild(accomSection);
+        }
+
+        // ======== Day Cards (Timeline) ========
+        const timeline = document.createElement('div');
+        timeline.className = 'timeline';
+
         days.forEach((day, index) => {
+            const dayItem = document.createElement('div');
+            dayItem.className = 'timeline-item';
+            dayItem.style.transitionDelay = `${index * 100}ms`;
+
+            // Timeline node
+            const node = document.createElement('div');
+            node.className = 'timeline-node';
+            node.textContent = index + 1;
+            dayItem.appendChild(node);
+
             const card = document.createElement('div');
             card.className = 'day-card';
-            card.style.transitionDelay = `${index * 100}ms`;
 
+            // Day Header
             let dayLabel = day.day;
             if (typeof day.day === 'string' && /^\d{4}-\d{2}-\d{2}/.test(day.day)) {
                 dayLabel = `Day ${index + 1}`;
@@ -221,7 +347,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 dateLabel = new Date(day.date + 'T00:00:00').toDateString();
             }
 
-            // Build header using textContent (XSS-safe)
             const header = document.createElement('div');
             header.className = 'day-header';
             header.textContent = `${dayLabel}: ${dateLabel}`;
@@ -229,24 +354,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (day.location) {
                 const locationSpan = document.createElement('span');
                 locationSpan.className = 'day-location';
-                locationSpan.textContent = ` (${day.location})`;
+                locationSpan.textContent = ` • ${day.location}`;
                 header.appendChild(locationSpan);
             }
-
-            if (meta.destination) {
-                const destSpan = document.createElement('span');
-                destSpan.className = 'day-destination';
-                destSpan.textContent = ` ${meta.destination}`;
-                header.appendChild(destSpan);
-            }
-
             card.appendChild(header);
 
+            // Daily Summary
+            if (day.summary) {
+                const summaryDiv = document.createElement('div');
+                summaryDiv.className = 'day-summary';
+                summaryDiv.textContent = day.summary;
+                card.appendChild(summaryDiv);
+            }
+
+            // Activities
             if (day.activities && day.activities.length > 0) {
                 day.activities.forEach((activity, actIdx) => {
                     let timeLabel;
                     let actName;
                     let actDesc;
+                    let actCost = '';
+                    let actDuration = '';
+                    let actTip = '';
 
                     if (typeof activity === 'string') {
                         timeLabel = actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening';
@@ -256,27 +385,52 @@ document.addEventListener('DOMContentLoaded', () => {
                         timeLabel = activity.time ? normalizeTime(activity.time) : (actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening');
                         actName = activity.name || activity.activity || 'Unknown';
                         actDesc = activity.description || '';
+                        actCost = activity.cost || activity.price || '';
+                        actDuration = activity.duration || '';
+                        actTip = activity.tip || activity.insiderTip || '';
                     }
 
-                    // Build activity using textContent (XSS-safe)
                     const activityDiv = document.createElement('div');
                     activityDiv.className = 'activity';
+
+                    const activityHeader = document.createElement('div');
+                    activityHeader.className = 'activity-header';
 
                     const timeDiv = document.createElement('div');
                     timeDiv.className = 'activity-time';
                     timeDiv.textContent = timeLabel;
-                    activityDiv.appendChild(timeDiv);
+                    activityHeader.appendChild(timeDiv);
 
                     const nameDiv = document.createElement('div');
                     nameDiv.className = 'activity-name';
                     nameDiv.textContent = actName;
-                    activityDiv.appendChild(nameDiv);
+                    activityHeader.appendChild(nameDiv);
+
+                    activityDiv.appendChild(activityHeader);
 
                     if (actDesc) {
                         const descDiv = document.createElement('div');
                         descDiv.className = 'activity-desc';
                         descDiv.textContent = actDesc;
                         activityDiv.appendChild(descDiv);
+                    }
+
+                    // Metadata row
+                    const metaParts = [];
+                    if (actDuration) metaParts.push(`⏱️ ${actDuration}`);
+                    if (actCost) metaParts.push(`💰 ${actCost}`);
+                    if (metaParts.length > 0) {
+                        const metaDiv = document.createElement('div');
+                        metaDiv.className = 'activity-meta';
+                        metaDiv.textContent = metaParts.join(' • ');
+                        activityDiv.appendChild(metaDiv);
+                    }
+
+                    if (actTip) {
+                        const tipDiv = document.createElement('div');
+                        tipDiv.className = 'activity-tip';
+                        tipDiv.textContent = `💡 ${actTip}`;
+                        activityDiv.appendChild(tipDiv);
                     }
 
                     card.appendChild(activityDiv);
@@ -288,14 +442,135 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.appendChild(noActivity);
             }
 
-            results.appendChild(card);
+            // Meal Plan
+            if (day.mealPlan && typeof day.mealPlan === 'object') {
+                const mealDiv = document.createElement('div');
+                mealDiv.className = 'meal-plan';
+                const mealTitle = document.createElement('div');
+                mealTitle.className = 'meal-plan-title';
+                mealTitle.textContent = '🍽️ Meals';
+                mealDiv.appendChild(mealTitle);
+
+                const mealGrid = document.createElement('div');
+                mealGrid.className = 'meal-grid';
+                const meals = [
+                    { label: 'Breakfast', value: day.mealPlan.breakfast },
+                    { label: 'Lunch', value: day.mealPlan.lunch },
+                    { label: 'Dinner', value: day.mealPlan.dinner }
+                ];
+                meals.forEach(meal => {
+                    if (meal.value) {
+                        const mealItem = document.createElement('div');
+                        mealItem.className = 'meal-item';
+                        const mealLabel = document.createElement('span');
+                        mealLabel.className = 'meal-label';
+                        mealLabel.textContent = meal.label + ': ';
+                        const mealValue = document.createElement('span');
+                        mealValue.className = 'meal-value';
+                        mealValue.textContent = meal.value;
+                        mealItem.appendChild(mealLabel);
+                        mealItem.appendChild(mealValue);
+                        mealGrid.appendChild(mealItem);
+                    }
+                });
+                if (mealGrid.children.length > 0) {
+                    mealDiv.appendChild(mealGrid);
+                    card.appendChild(mealDiv);
+                }
+            }
+
+            // Transportation
+            if (day.transportation) {
+                const transportDiv = document.createElement('div');
+                transportDiv.className = 'day-transport';
+                transportDiv.textContent = `🚆 ${day.transportation}`;
+                card.appendChild(transportDiv);
+            }
+
+            dayItem.appendChild(card);
+            timeline.appendChild(dayItem);
         });
+
+        results.appendChild(timeline);
+
+        // ======== Packing List Section ========
+        if (packingList && packingList.length > 0) {
+            const packingSection = document.createElement('div');
+            packingSection.className = 'section-card';
+
+            const packingTitle = document.createElement('h3');
+            packingTitle.className = 'section-title';
+            packingTitle.textContent = '🎒 Packing List';
+            packingSection.appendChild(packingTitle);
+
+            const packingGrid = document.createElement('div');
+            packingGrid.className = 'packing-grid';
+            packingList.forEach(item => {
+                const packingItem = document.createElement('div');
+                packingItem.className = 'packing-item';
+                packingItem.textContent = `✓ ${item}`;
+                packingGrid.appendChild(packingItem);
+            });
+            packingSection.appendChild(packingGrid);
+
+            results.appendChild(packingSection);
+        }
+
+        // ======== Travel Tips Section ========
+        if (travelTips && travelTips.length > 0) {
+            const tipsSection = document.createElement('div');
+            tipsSection.className = 'section-card';
+
+            const tipsTitle = document.createElement('h3');
+            tipsTitle.className = 'section-title';
+            tipsTitle.textContent = '💡 Travel Tips';
+            tipsSection.appendChild(tipsTitle);
+
+            const tipsList = document.createElement('ul');
+            tipsList.className = 'tips-list';
+            travelTips.forEach(tip => {
+                const tipItem = document.createElement('li');
+                tipItem.className = 'tip-item';
+                tipItem.textContent = tip;
+                tipsList.appendChild(tipItem);
+            });
+            tipsSection.appendChild(tipsList);
+
+            results.appendChild(tipsSection);
+        }
+
+        // ======== Action Buttons ========
+        const actionRow = document.createElement('div');
+        actionRow.className = 'action-row';
+
+        const printBtn = document.createElement('button');
+        printBtn.className = 'btn-secondary';
+        printBtn.textContent = '🖨️ Print / Save PDF';
+        printBtn.addEventListener('click', () => window.print());
+        actionRow.appendChild(printBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn-secondary';
+        copyBtn.textContent = '📋 Copy Itinerary';
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+                copyBtn.textContent = '✅ Copied!';
+                setTimeout(() => { copyBtn.textContent = '📋 Copy Itinerary'; }, 2000);
+            } catch {
+                copyBtn.textContent = '❌ Copy failed';
+                setTimeout(() => { copyBtn.textContent = '📋 Copy Itinerary'; }, 2000);
+            }
+        });
+        actionRow.appendChild(copyBtn);
+
+        results.appendChild(actionRow);
 
         results.classList.remove('hidden');
 
         setTimeout(() => {
-            document.querySelectorAll('.day-card').forEach(card => {
-                card.classList.add('visible');
+            document.querySelectorAll('.timeline-item').forEach(item => {
+                item.classList.add('visible');
             });
         }, 50);
     }

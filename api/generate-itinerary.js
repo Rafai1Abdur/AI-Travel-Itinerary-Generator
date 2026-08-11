@@ -47,13 +47,19 @@ function normalizeActivity(act, actIdx) {
         return {
             time: actIdx < 1 ? 'Morning' : actIdx < 3 ? 'Afternoon' : 'Evening',
             name: act,
-            description: ''
+            description: '',
+            cost: '',
+            duration: '',
+            tip: ''
         };
     }
     return {
         time: normalizeTimeLabel(act.time, actIdx),
         name: act.name || act.activity || 'Unknown',
-        description: act.description || ''
+        description: act.description || '',
+        cost: act.cost || act.price || '',
+        duration: act.duration || '',
+        tip: act.tip || act.insiderTip || ''
     };
 }
 
@@ -85,7 +91,10 @@ function normalizeDay(day, idx, fallbackDate) {
         day: dayLabel,
         date: normalizedDate,
         location: day.location || '',
-        activities
+        activities,
+        summary: day.summary || day.dailySummary || null,
+        mealPlan: day.mealPlan || day.meals || null,
+        transportation: day.transportation || day.transport || ''
     };
 }
 
@@ -300,7 +309,11 @@ function normalizeItinerary(data) {
 
     return {
         ...(meta.destination ? { destination: meta.destination } : {}),
-        days: days.map((day, idx) => normalizeDay(day, idx, meta.fallbackDate))
+        days: days.map((day, idx) => normalizeDay(day, idx, meta.fallbackDate)),
+        overview: data.overview || data.tripOverview || data.summary || null,
+        accommodations: data.accommodations || data.hotels || null,
+        packingList: data.packingList || data.packing || null,
+        travelTips: data.travelTips || data.tips || null
     };
 }
 
@@ -342,7 +355,30 @@ export default async function handler(req, res) {
     const maxTokens = Math.min(8000, tripDays * 300 + 500);
     console.log('[Request] Trip days:', tripDays, '| Max tokens:', maxTokens);
 
-    const prompt = `Generate a day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate} (${tripDays} days). Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}. Return ONLY valid JSON with a "days" array. Each day has "day" (number), "date" (YYYY-MM-DD), and "activities" (array with "time", "name", "description"). Keep descriptions concise (under 15 words). Do NOT include any text outside the JSON.`;
+    const prompt = `Generate a detailed day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate} (${tripDays} days). Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}.
+
+Return ONLY valid JSON with this structure:
+{
+  "overview": { "summary": "2-3 sentence trip overview", "totalBudget": "estimated total in USD", "bestTimeToVisit": "brief note" },
+  "days": [
+    {
+      "day": 1,
+      "date": "YYYY-MM-DD",
+      "location": "area/neighborhood",
+      "summary": "1 sentence daily summary",
+      "mealPlan": { "breakfast": "place", "lunch": "place", "dinner": "place" },
+      "transportation": "how to get around",
+      "activities": [
+        { "time": "9:00 AM", "name": "Activity name", "description": "brief description", "cost": "$25", "duration": "2 hours", "tip": "insider tip" }
+      ]
+    }
+  ],
+  "accommodations": [ { "name": "Hotel name", "area": "neighborhood", "pricePerNight": "$150", "rating": "4.5", "note": "brief note" } ],
+  "packingList": ["item 1", "item 2"],
+  "travelTips": ["tip 1", "tip 2"]
+}
+
+Keep descriptions concise (under 15 words). Include 3-4 activities per day. Do NOT include any text outside the JSON.`;
 
     // Try OpenAI first
     if (OPENAI_API_KEY) {
