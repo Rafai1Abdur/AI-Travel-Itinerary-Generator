@@ -413,21 +413,53 @@ export default async function handler(req, res) {
 
             if (response.ok) {
                 const result = await response.json();
-                if (result.choices?.[0]?.message?.content) {
-                    const content = result.choices[0].message.content;
+                console.log('[OpenRouter] Response keys:', Object.keys(result));
+                console.log('[OpenRouter] choices:', Array.isArray(result.choices) ? result.choices.length : 'not array');
+                console.log('[OpenRouter] message keys:', result.choices?.[0]?.message ? Object.keys(result.choices[0].message) : 'no message');
+                console.log('[OpenRouter] content type:', typeof result.choices?.[0]?.message?.content);
+
+                // Handle different content structures
+                let content = null;
+                if (typeof result.choices?.[0]?.message?.content === 'string') {
+                    content = result.choices[0].message.content;
+                } else if (Array.isArray(result.choices?.[0]?.message?.content)) {
+                    // Some models return content as an array of parts
+                    content = result.choices[0].message.content
+                        .map(part => typeof part === 'string' ? part : (part.text || part.content || ''))
+                        .join('');
+                } else if (result.message?.content) {
+                    // Some OpenRouter responses use result.message instead of result.choices[0].message
+                    content = typeof result.message.content === 'string'
+                        ? result.message.content
+                        : JSON.stringify(result.message.content);
+                }
+
+                console.log('[OpenRouter] Content found:', !!content, '| Length:', content?.length);
+                if (content) console.log('[OpenRouter] Content preview:', content.substring(0, 200));
+
+                if (content) {
                     try {
                         const parsed = JSON.parse(content);
+                        console.log('[OpenRouter] JSON parse: SUCCESS');
                         const normalized = normalizeItinerary(parsed);
+                        console.log('[OpenRouter] Normalized days:', normalized?.days?.length);
                         if (!normalized.days) {
                             const textParsed = parseTextItinerary(content);
+                            console.log('[OpenRouter] Text parse:', !!textParsed);
                             if (textParsed) return res.status(200).json({ source: 'openrouter-text-parsed', ...textParsed });
                         }
                         return res.status(200).json({ source: 'openrouter', ...normalized });
-                    } catch {
+                    } catch (parseErr) {
+                        console.log('[OpenRouter] JSON parse FAILED:', parseErr.message);
+                        // JSON parse failed - try text parsing
                         const textParsed = parseTextItinerary(content);
+                        console.log('[OpenRouter] Text parse:', !!textParsed);
                         if (textParsed) return res.status(200).json({ source: 'openrouter-text-parsed', ...textParsed });
                         return res.status(503).json(configError('OpenRouter'));
                     }
+                } else {
+                    console.log('[OpenRouter] No content found in response');
+                    console.log('[OpenRouter] Full response:', JSON.stringify(result).substring(0, 500));
                 }
             }
         } catch (error) {
