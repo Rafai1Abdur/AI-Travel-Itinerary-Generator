@@ -254,8 +254,40 @@ function repairTruncatedJson(text) {
         const parsed = JSON.parse(repaired);
         return parsed;
     } catch {
-        return null;
+        // Full repair failed - try partial recovery
+        return partialJsonRecovery(text);
     }
+}
+
+/**
+ * Partial JSON recovery: extract complete day objects from truncated JSON.
+ * Finds all complete day objects in the "days" array and returns them.
+ */
+function partialJsonRecovery(text) {
+    if (typeof text !== 'string' || text.trim().length === 0) return null;
+
+    // Try to find complete day objects in the truncated JSON
+    // Look for patterns like {"day": 1, ...} or {"day":"Day 1", ...}
+    const dayPattern = /\{\s*"day"\s*:\s*(\d+|\"[^\"]+\")\s*,[\s\S]*?\}(?=\s*[,}\]]|\s*$)/g;
+    const matches = [];
+    let match;
+
+    while ((match = dayPattern.exec(text)) !== null) {
+        try {
+            const dayObj = JSON.parse(match[0]);
+            if (dayObj && dayObj.day !== undefined) {
+                matches.push(dayObj);
+            }
+        } catch {
+            // Skip incomplete day objects
+        }
+    }
+
+    if (matches.length > 0) {
+        return { days: matches };
+    }
+
+    return null;
 }
 
 function normalizeItinerary(data) {
@@ -351,15 +383,15 @@ export default async function handler(req, res) {
 
     // Calculate trip length in days for dynamic token allocation
     const tripDays = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
-    // Allocate ~300 tokens per day + 500 buffer for the JSON structure
-    const maxTokens = Math.min(8000, tripDays * 300 + 500);
+    // Allocate ~600 tokens per day + 1000 buffer for the rich JSON structure
+    const maxTokens = Math.min(16000, tripDays * 600 + 1000);
     console.log('[Request] Trip days:', tripDays, '| Max tokens:', maxTokens);
 
     const prompt = `Generate a detailed day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate} (${tripDays} days). Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}.
 
 Return ONLY valid JSON with this structure:
 {
-  "overview": { "summary": "2-3 sentence trip overview", "totalBudget": "estimated total in USD", "bestTimeToVisit": "brief note" },
+  "overview": { "summary": "2-3 sentence trip overview", "totalBudget": "estimated total in USD" },
   "days": [
     {
       "day": 1,
@@ -378,7 +410,7 @@ Return ONLY valid JSON with this structure:
   "travelTips": ["tip 1", "tip 2"]
 }
 
-Keep descriptions concise (under 15 words). Include 3-4 activities per day. Do NOT include any text outside the JSON.`;
+Keep descriptions VERY concise (under 10 words). Include 2-3 activities per day. Do NOT include any text outside the JSON.`;
 
     // Try OpenAI first
     if (OPENAI_API_KEY) {

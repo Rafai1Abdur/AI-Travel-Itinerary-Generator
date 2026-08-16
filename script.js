@@ -4,13 +4,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const results = document.getElementById('results');
     const error = document.getElementById('error');
     const spinner = document.getElementById('spinner');
+    const countrySelect = document.getElementById('country');
+    const citySelect = document.getElementById('city');
+
+    // ======== Populate Country Dropdown ========
+    const countries = Object.keys(COUNTRIES).sort();
+    countries.forEach(country => {
+        const option = document.createElement('option');
+        option.value = country;
+        option.textContent = country;
+        countrySelect.appendChild(option);
+    });
+
+    // ======== Handle Country → City Dependency ========
+    countrySelect.addEventListener('change', () => {
+        const selectedCountry = countrySelect.value;
+        citySelect.innerHTML = '<option value="">Select City</option>';
+        citySelect.disabled = !selectedCountry;
+
+        if (selectedCountry && COUNTRIES[selectedCountry]) {
+            COUNTRIES[selectedCountry].forEach(city => {
+                const option = document.createElement('option');
+                option.value = city;
+                option.textContent = city;
+                citySelect.appendChild(option);
+            });
+        }
+    });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
         const formData = new FormData(form);
+        const country = formData.get('country');
+        const city = formData.get('city');
+        const destination = city && city !== '' ? `${city}, ${country}` : country;
+
         const data = {
-            destination: sanitizeInput(formData.get('destination')),
+            destination: sanitizeInput(destination),
+            country: sanitizeInput(country),
+            city: sanitizeInput(city),
             startDate: formData.get('startDate'),
             endDate: formData.get('endDate'),
             budget: formData.get('budget'),
@@ -23,6 +56,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setLoading(true);
         clearError();
+
+        // Animate button press
+        if (window.Motion) {
+            const btn = form.querySelector('button');
+            Motion.animate(btn, { scale: 0.95 }, { duration: 0.1 }).finished.then(() => {
+                Motion.animate(btn, { scale: 1 }, { duration: 0.2, easing: 'ease-out' });
+            });
+        }
 
         try {
             const response = await fetch('/api/generate-itinerary', {
@@ -60,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function validateForm(data) {
         if (!data.destination || data.destination.length > 100) {
-            showError('Please enter a valid destination.');
+            showError('Please select a country and city.');
             return false;
         }
 
@@ -105,6 +146,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function showError(message) {
         error.textContent = message;
         error.classList.remove('hidden');
+        if (window.Motion) {
+            Motion.animate(error, { opacity: [0, 1], y: [-10, 0] }, { duration: 0.3 });
+        }
     }
 
     function clearError() {
@@ -568,11 +612,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
         results.classList.remove('hidden');
 
-        setTimeout(() => {
-            document.querySelectorAll('.timeline-item').forEach(item => {
-                item.classList.add('visible');
+        // ======== Motion One Animations ========
+        if (window.Motion) {
+            // Animate overview card
+            const overviewCard = results.querySelector('.trip-overview-card');
+            if (overviewCard) {
+                Motion.animate(overviewCard, { opacity: [0, 1], y: [-20, 0] }, { duration: 0.5, easing: 'ease-out' });
+            }
+
+            // Animate section cards
+            results.querySelectorAll('.section-card').forEach((card, i) => {
+                Motion.animate(card, { opacity: [0, 1], y: [20, 0] }, { duration: 0.4, delay: 0.1 + i * 0.1 });
             });
-        }, 50);
+
+            // Animate timeline items with stagger
+            const items = results.querySelectorAll('.timeline-item');
+            items.forEach((item, i) => {
+                Motion.animate(item, { opacity: [0, 1], y: [30, 0] }, {
+                    duration: 0.5,
+                    delay: 0.2 + i * 0.08,
+                    easing: [0.34, 1.56, 0.64, 1] // spring-like easing
+                });
+            });
+
+            // Animate action buttons
+            Motion.animate(actionRow, { opacity: [0, 1], y: [10, 0] }, { duration: 0.4, delay: 0.5 });
+        } else {
+            // Fallback: just show everything
+            setTimeout(() => {
+                document.querySelectorAll('.timeline-item').forEach(item => {
+                    item.classList.add('visible');
+                });
+            }, 50);
+        }
     }
 
     function normalizeTime(time) {

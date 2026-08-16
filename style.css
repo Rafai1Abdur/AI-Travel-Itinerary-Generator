@@ -110,10 +110,28 @@ select:hover {
     border-color: var(--primary-light);
 }
 
+.selection-fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+}
+
+.selection-title {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    padding: 0;
+    margin-bottom: 0.75rem;
+    text-align: center;
+    display: block;
+}
+
 .checkbox-group,
 .radio-group {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 0.75rem;
 }
 
@@ -327,14 +345,9 @@ select:hover {
     position: relative;
     margin-bottom: 1.5rem;
     padding-left: 3.5rem;
-    opacity: 0;
-    transform: translateY(20px);
-    transition: opacity 0.4s ease, transform 0.4s ease;
-}
-
-.timeline-item.visible {
     opacity: 1;
     transform: translateY(0);
+    transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
 .timeline-node {
@@ -648,6 +661,7 @@ select:hover {
     .checkbox-group,
     .radio-group {
         flex-direction: column;
+        align-items: center;
         gap: 0.5rem;
     }
 

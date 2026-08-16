@@ -18,10 +18,19 @@
 
     <main class="container">
         <form id="itinerary-form" class="travel-form">
-            <div class="form-group">
-                <label for="destination">Destination</label>
-                <input type="text" id="destination" name="destination" required maxlength="100"
-                    placeholder="e.g., Paris, France">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="country">Country</label>
+                    <select id="country" name="country" required>
+                        <option value="">Select Country</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="city">City</label>
+                    <select id="city" name="city" required disabled>
+                        <option value="">Select City</option>
+                    </select>
+                </div>
             </div>
 
             <div class="form-row">
@@ -51,8 +60,8 @@
             </div>
 
             <div class="form-group">
-                <fieldset>
-                    <legend>Travel Style</legend>
+                <fieldset class="selection-fieldset">
+                    <legend class="selection-title">Travel Style</legend>
                     <div class="radio-group">
                         <label><input type="radio" name="travelStyle" value="family" required> Family</label>
                         <label><input type="radio" name="travelStyle" value="solo"> Solo</label>
@@ -63,8 +72,8 @@
             </div>
 
             <div class="form-group">
-                <fieldset>
-                    <legend>Interests</legend>
+                <fieldset class="selection-fieldset">
+                    <legend class="selection-title">Interests</legend>
                     <div class="checkbox-group">
                         <label><input type="checkbox" name="interests" value="culture"> Culture</label>
                         <label><input type="checkbox" name="interests" value="food"> Food</label>
@@ -76,7 +85,7 @@
             </div>
 
             <button type="submit" class="btn-primary">
-                <span class="btn-text">Generate Itinerary</span>
+                <span class="btn-text">Generate Itinerary ✨</span>
                 <span class="spinner hidden" id="spinner"></span>
             </button>
         </form>
@@ -110,6 +119,8 @@
         </section>
     </main>
 
+    <script src="countries.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/motion@latest/dist/motion.js"></script>
     <script src="script.js"></script>
 </body>
 
