@@ -110,6 +110,37 @@ select:hover {
     border-color: var(--primary-light);
 }
 
+.form-section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--primary);
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 0.25rem;
+}
+
+.checkbox-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+
+.checkbox-inline:hover {
+    border-color: var(--primary-light);
+    background: #f0f7ff;
+}
+
+.checkbox-inline input {
+    accent-color: var(--primary);
+}
+
 .selection-fieldset {
     border: none;
     padding: 0;

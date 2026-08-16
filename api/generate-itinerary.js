@@ -356,7 +356,13 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { destination, startDate, endDate, budget, travelers, travelStyle, interests } = req.body || {};
+    const {
+        destination, startDate, endDate, budget, travelers, travelStyle, interests,
+        sourceCountry, sourceCity, sourceLocation,
+        departureTime, arrivalTime, returnDepartureTime, returnArrivalTime,
+        restDayAfterArrival, restDayBeforeDeparture,
+        budgetAmount, budgetCurrency
+    } = req.body || {};
 
     if (!destination || !startDate || !endDate) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -373,12 +379,19 @@ export default async function handler(req, res) {
     // Log request for debugging
     console.log('[Request]', {
         destination,
+        sourceLocation,
         startDate,
         endDate,
         budget,
+        budgetAmount,
+        budgetCurrency,
         travelers,
         travelStyle,
-        interests
+        interests,
+        departureTime,
+        arrivalTime,
+        restDayAfterArrival,
+        restDayBeforeDeparture
     });
 
     // Calculate trip length in days for dynamic token allocation
@@ -387,7 +400,24 @@ export default async function handler(req, res) {
     const maxTokens = Math.min(16000, tripDays * 600 + 1000);
     console.log('[Request] Trip days:', tripDays, '| Max tokens:', maxTokens);
 
-    const prompt = `Generate a detailed day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate} (${tripDays} days). Budget: ${budget}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}.
+    // Build budget description
+    let budgetDesc = budget;
+    if (budget === 'custom' && budgetAmount && budgetCurrency) {
+        const currencyInfo = budgetCurrency;
+        budgetDesc = `${budgetAmount} ${currencyInfo} (custom budget)`;
+    }
+
+    // Build travel details
+    const travelDetails = [];
+    if (sourceLocation) travelDetails.push(`Traveling from: ${sourceLocation}`);
+    if (departureTime) travelDetails.push(`Departure time from source: ${departureTime}`);
+    if (arrivalTime) travelDetails.push(`Arrival time at destination: ${arrivalTime}`);
+    if (returnDepartureTime) travelDetails.push(`Return departure time: ${returnDepartureTime}`);
+    if (returnArrivalTime) travelDetails.push(`Return arrival time: ${returnArrivalTime}`);
+    if (restDayAfterArrival) travelDetails.push('Include a rest day after arrival to recover from jet lag');
+    if (restDayBeforeDeparture) travelDetails.push('Include a rest day before departure');
+
+    const prompt = `Generate a detailed day-by-day travel itinerary for ${destination} from ${startDate} to ${endDate} (${tripDays} days). Budget: ${budgetDesc}. Travelers: ${travelers}. Style: ${travelStyle}. Interests: ${interests?.join(', ') || 'general'}. ${travelDetails.join('. ')}.
 
 Return ONLY valid JSON with this structure:
 {
@@ -406,6 +436,14 @@ Return ONLY valid JSON with this structure:
     }
   ],
   "accommodations": [ { "name": "Hotel name", "area": "neighborhood", "pricePerNight": "$150", "rating": "4.5", "note": "brief note" } ],
+  "travelAgencies": [ { "name": "Agency name", "area": "location", "specialty": "what they do", "approxCost": "cost" } ],
+  "carRentals": [ { "company": "Rental company", "location": "where", "dailyRate": "rate" } ],
+  "localTransport": { "options": ["Metro", "Bus", "Taxi"], "dailyCost": "estimated", "tips": "advice" },
+  "recommendedFood": [ { "dish": "Dish name", "restaurant": "Restaurant name", "area": "location", "priceRange": "range" } ],
+  "cinemas": [ { "name": "Cinema name", "area": "location", "ticketPrice": "price", "budgetTier": "budget/moderate/luxury" } ],
+  "sportsEvents": [ { "name": "Event name", "date": "date", "venue": "venue", "ticketPrice": "price" } ],
+  "weatherClothing": { "season": "season", "typicalForecast": "forecast", "clothingRecommendations": "what to wear", "extremeAlternatives": "backup plan" },
+  "culturalAdvice": { "greetings": "how to greet", "taboos": "what to avoid", "dressCode": "what to wear", "dosAndDonts": ["do", "don't"] },
   "packingList": ["item 1", "item 2"],
   "travelTips": ["tip 1", "tip 2"]
 }

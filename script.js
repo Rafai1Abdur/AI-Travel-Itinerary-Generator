@@ -6,6 +6,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const spinner = document.getElementById('spinner');
     const countrySelect = document.getElementById('country');
     const citySelect = document.getElementById('city');
+    const sourceCountrySelect = document.getElementById('source-country');
+    const sourceCitySelect = document.getElementById('source-city');
+    const budgetSelect = document.getElementById('budget');
+    const customBudgetRow = document.getElementById('custom-budget-row');
+    const budgetCurrencySelect = document.getElementById('budget-currency');
     const loadingText = document.getElementById('loading-text');
     const loadingProgressBar = document.getElementById('loading-progress-bar');
     let loadingTextInterval = null;
@@ -19,16 +24,30 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
     let loadingMsgIndex = 0;
 
-    // ======== Populate Country Dropdown ========
+    // ======== Populate Country Dropdowns ========
     const countries = Object.keys(COUNTRIES).sort();
     countries.forEach(country => {
         const option = document.createElement('option');
         option.value = country;
         option.textContent = country;
         countrySelect.appendChild(option);
+
+        const sourceOption = document.createElement('option');
+        sourceOption.value = country;
+        sourceOption.textContent = country;
+        sourceCountrySelect.appendChild(sourceOption);
     });
 
-    // ======== Handle Country → City Dependency ========
+    // ======== Populate Currency Dropdown ========
+    Object.keys(CURRENCIES).sort().forEach(code => {
+        const currency = CURRENCIES[code];
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = `${code} (${currency.symbol}) - ${currency.name}`;
+        budgetCurrencySelect.appendChild(option);
+    });
+
+    // ======== Handle Country → City Dependency (Destination) ========
     countrySelect.addEventListener('change', () => {
         const selectedCountry = countrySelect.value;
         citySelect.innerHTML = '<option value="">Select City</option>';
@@ -44,21 +63,75 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ======== Handle Source Country → City Dependency ========
+    sourceCountrySelect.addEventListener('change', () => {
+        const selectedCountry = sourceCountrySelect.value;
+        sourceCitySelect.innerHTML = '<option value="">Select City</option>';
+        sourceCitySelect.disabled = !selectedCountry;
+
+        if (selectedCountry && COUNTRIES[selectedCountry]) {
+            COUNTRIES[selectedCountry].forEach(city => {
+                const option = document.createElement('option');
+                option.value = city;
+                option.textContent = city;
+                sourceCitySelect.appendChild(option);
+            });
+        }
+
+        // Auto-detect currency based on source country
+        if (selectedCountry && typeof getCurrencyForCountry === 'function') {
+            const currencyCode = getCurrencyForCountry(selectedCountry);
+            if (currencyCode && budgetCurrencySelect) {
+                budgetCurrencySelect.value = currencyCode;
+            }
+        }
+    });
+
+    // ======== Handle Custom Budget Toggle ========
+    budgetSelect.addEventListener('change', () => {
+        const isCustom = budgetSelect.value === 'custom';
+        customBudgetRow.classList.toggle('hidden', !isCustom);
+        if (isCustom) {
+            budgetCurrencySelect.required = true;
+            document.getElementById('budget-amount').required = true;
+        } else {
+            budgetCurrencySelect.required = false;
+            document.getElementById('budget-amount').required = false;
+        }
+    });
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
         const formData = new FormData(form);
         const country = formData.get('country');
         const city = formData.get('city');
+        const sourceCountry = formData.get('sourceCountry');
+        const sourceCity = formData.get('sourceCity');
         const destination = city && city !== '' ? `${city}, ${country}` : country;
+        const sourceLocation = sourceCity && sourceCity !== '' ? `${sourceCity}, ${sourceCountry}` : sourceCountry;
+        const budget = formData.get('budget');
+        const budgetAmount = budget === 'custom' ? formData.get('budgetAmount') : null;
+        const budgetCurrency = budget === 'custom' ? formData.get('budgetCurrency') : null;
 
         const data = {
             destination: sanitizeInput(destination),
             country: sanitizeInput(country),
             city: sanitizeInput(city),
+            sourceCountry: sanitizeInput(sourceCountry),
+            sourceCity: sanitizeInput(sourceCity),
+            sourceLocation: sanitizeInput(sourceLocation),
             startDate: formData.get('startDate'),
             endDate: formData.get('endDate'),
-            budget: formData.get('budget'),
+            departureTime: formData.get('departureTime') || '',
+            arrivalTime: formData.get('arrivalTime') || '',
+            returnDepartureTime: formData.get('returnDepartureTime') || '',
+            returnArrivalTime: formData.get('returnArrivalTime') || '',
+            restDayAfterArrival: formData.get('restDayAfterArrival') === 'true',
+            restDayBeforeDeparture: formData.get('restDayBeforeDeparture') === 'true',
+            budget: budget,
+            budgetAmount: budgetAmount ? parseFloat(budgetAmount) : null,
+            budgetCurrency: budgetCurrency || '',
             travelers: parseInt(formData.get('travelers')),
             travelStyle: formData.get('travelStyle'),
             interests: formData.getAll('interests').slice(0, 10)
