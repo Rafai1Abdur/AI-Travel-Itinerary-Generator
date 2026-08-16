@@ -6,6 +6,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const spinner = document.getElementById('spinner');
     const countrySelect = document.getElementById('country');
     const citySelect = document.getElementById('city');
+    const loadingText = document.getElementById('loading-text');
+    const loadingProgressBar = document.getElementById('loading-progress-bar');
+    let loadingTextInterval = null;
+    const loadingMessages = [
+        'Planning your adventure...',
+        'Finding hidden gems...',
+        'Checking local events...',
+        'Optimizing your route...',
+        'Adding insider tips...',
+        'Almost there...'
+    ];
+    let loadingMsgIndex = 0;
 
     // ======== Populate Country Dropdown ========
     const countries = Object.keys(COUNTRIES).sort();
@@ -137,9 +149,27 @@ document.addEventListener('DOMContentLoaded', () => {
             spinner.classList.remove('hidden');
             // Hide results only when starting loading
             results.classList.add('hidden');
+            // Start cycling loading messages
+            loadingMsgIndex = 0;
+            if (loadingText) loadingText.textContent = loadingMessages[0];
+            if (loadingProgressBar) loadingProgressBar.style.width = '0%';
+            loadingTextInterval = setInterval(() => {
+                loadingMsgIndex = (loadingMsgIndex + 1) % loadingMessages.length;
+                if (loadingText) loadingText.textContent = loadingMessages[loadingMsgIndex];
+                if (loadingProgressBar) {
+                    const progress = Math.min(90, (loadingMsgIndex / loadingMessages.length) * 100);
+                    loadingProgressBar.style.width = `${progress}%`;
+                }
+            }, 1200);
         } else {
             button.classList.remove('btn-loading');
             spinner.classList.add('hidden');
+            // Stop cycling loading messages
+            if (loadingTextInterval) {
+                clearInterval(loadingTextInterval);
+                loadingTextInterval = null;
+            }
+            if (loadingProgressBar) loadingProgressBar.style.width = '100%';
         }
     }
 
@@ -611,6 +641,32 @@ document.addEventListener('DOMContentLoaded', () => {
         results.appendChild(actionRow);
 
         results.classList.remove('hidden');
+
+        // ======== Confetti on Success ========
+        if (window.Motion) {
+            // Create confetti particles
+            const confettiColors = ['#2563eb', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444'];
+            for (let i = 0; i < 30; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti-piece';
+                confetti.style.left = `${Math.random() * 100}%`;
+                confetti.style.backgroundColor = confettiColors[Math.floor(Math.random() * confettiColors.length)];
+                confetti.style.width = `${6 + Math.random() * 6}px`;
+                confetti.style.height = `${6 + Math.random() * 6}px`;
+                confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+                document.body.appendChild(confetti);
+                Motion.animate(confetti, {
+                    y: [0, window.innerHeight + 100],
+                    x: [0, (Math.random() - 0.5) * 200],
+                    rotate: [0, Math.random() * 720 - 360],
+                    opacity: [1, 0.8, 0]
+                }, {
+                    duration: 1.5 + Math.random() * 1.5,
+                    delay: Math.random() * 0.5,
+                    easing: 'ease-in'
+                }).finished.then(() => confetti.remove());
+            }
+        }
 
         // ======== Motion One Animations ========
         if (window.Motion) {

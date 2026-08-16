@@ -173,15 +173,50 @@ select:hover {
     align-self: flex-start;
     position: relative;
     overflow: hidden;
+    animation: btn-pulse 2s ease-in-out infinite;
 }
 
 .btn-primary:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-hover);
+    animation: none;
 }
 
 .btn-primary:active {
     transform: translateY(0);
+}
+
+@keyframes btn-pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 0 8px rgba(37, 99, 235, 0);
+    }
+}
+
+.btn-shimmer {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: btn-shimmer 2.5s infinite;
+    pointer-events: none;
+}
+
+@keyframes btn-shimmer {
+    0% {
+        left: -100%;
+    }
+
+    100% {
+        left: 200%;
+    }
 }
 
 .btn-secondary {
@@ -228,29 +263,175 @@ select:hover {
 
 .loading {
     margin-top: 2rem;
+    display: flex;
+    justify-content: center;
 }
 
-.skeleton-cards {
+.globe-loader {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 2rem;
 }
 
-.skeleton-card {
-    height: 120px;
-    background: linear-gradient(90deg, var(--background-alt) 25%, var(--border) 50%, var(--background-alt) 75%);
-    background-size: 200% 100%;
-    border-radius: var(--radius);
-    animation: shimmer 1.5s infinite;
+.globe {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
+    box-shadow: 0 0 30px rgba(37, 99, 235, 0.4), inset -20px -20px 40px rgba(0, 0, 0, 0.3);
+    animation: globe-spin 8s linear infinite;
 }
 
-@keyframes shimmer {
+@keyframes globe-spin {
     0% {
-        background-position: 200%;
+        transform: rotate(0deg);
     }
 
     100% {
-        background-position: -200%;
+        transform: rotate(360deg);
+    }
+}
+
+.globe-sphere {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2), transparent 50%);
+}
+
+.globe-continent {
+    position: absolute;
+    background: rgba(34, 197, 94, 0.7);
+    border-radius: 40% 60% 55% 45% / 50% 45% 55% 50%;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.continent-1 {
+    top: 20%;
+    left: 15%;
+    width: 35%;
+    height: 30%;
+    transform: rotate(15deg);
+}
+
+.continent-2 {
+    top: 55%;
+    left: 40%;
+    width: 40%;
+    height: 25%;
+    transform: rotate(-10deg);
+}
+
+.continent-3 {
+    top: 10%;
+    left: 60%;
+    width: 25%;
+    height: 20%;
+    transform: rotate(30deg);
+}
+
+.globe-grid {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+        linear-gradient(90deg, transparent 48%, rgba(255, 255, 255, 0.15) 50%, transparent 52%),
+        linear-gradient(0deg, transparent 48%, rgba(255, 255, 255, 0.15) 50%, transparent 52%);
+}
+
+.globe-plane {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    font-size: 1.5rem;
+    transform: translate(-50%, -50%);
+    animation: plane-orbit 4s ease-in-out infinite;
+    z-index: 2;
+}
+
+@keyframes plane-orbit {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg) translateX(60px) rotate(0deg);
+    }
+
+    100% {
+        transform: translate(-50%, -50%) rotate(360deg) translateX(60px) rotate(-360deg);
+    }
+}
+
+.globe-pin {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    font-size: 1.25rem;
+    transform: translate(-50%, -50%);
+    animation: pin-bounce 1.5s ease-in-out infinite;
+    z-index: 3;
+}
+
+@keyframes pin-bounce {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) translateY(0);
+    }
+
+    50% {
+        transform: translate(-50%, -50%) translateY(-8px);
+    }
+}
+
+.loading-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--primary);
+    text-align: center;
+    animation: text-fade 2s ease-in-out infinite;
+}
+
+@keyframes text-fade {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.loading-progress {
+    width: 200px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.loading-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--gradient);
+    border-radius: 3px;
+    animation: progress-fill 3s ease-in-out infinite;
+}
+
+@keyframes progress-fill {
+    0% {
+        width: 0%;
+    }
+
+    50% {
+        width: 70%;
+    }
+
+    100% {
+        width: 100%;
     }
 }
 
@@ -582,6 +763,14 @@ select:hover {
     justify-content: center;
     margin: 2rem 0;
     flex-wrap: wrap;
+}
+
+/* ======== Confetti ======== */
+.confetti-piece {
+    position: fixed;
+    top: -20px;
+    z-index: 9999;
+    pointer-events: none;
 }
 
 /* ======== Results ======== */

@@ -84,17 +84,28 @@
                 </fieldset>
             </div>
 
-            <button type="submit" class="btn-primary">
+            <button type="submit" class="btn-primary" id="generate-btn">
+                <span class="btn-shimmer"></span>
                 <span class="btn-text">Generate Itinerary ✨</span>
                 <span class="spinner hidden" id="spinner"></span>
             </button>
         </form>
 
         <section id="loading" class="loading hidden">
-            <div class="skeleton-cards">
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
+            <div class="globe-loader">
+                <div class="globe">
+                    <div class="globe-sphere"></div>
+                    <div class="globe-continent continent-1"></div>
+                    <div class="globe-continent continent-2"></div>
+                    <div class="globe-continent continent-3"></div>
+                    <div class="globe-grid"></div>
+                    <div class="globe-plane">✈️</div>
+                    <div class="globe-pin">📍</div>
+                </div>
+                <div class="loading-text" id="loading-text">Planning your adventure...</div>
+                <div class="loading-progress">
+                    <div class="loading-progress-bar" id="loading-progress-bar"></div>
+                </div>
             </div>
         </section>
 
