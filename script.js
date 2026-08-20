@@ -418,6 +418,28 @@ document.addEventListener('DOMContentLoaded', () => {
             results.appendChild(overviewCard);
         }
 
+        // ======== Phase B: Destination Image ========
+        const destParts = String(destination || '').split(',').map(s => s.trim());
+        const cityName = data?.city || destParts[0] || '';
+        const countryName = data?.country || destParts[1] || '';
+        if (cityName || countryName) {
+            renderDestinationImage(results, cityName, countryName);
+        }
+
+        // ======== Phase B: Live Weather ========
+        if (cityName || countryName) {
+            fetchWeather(cityName, countryName).then(weatherData => {
+                if (weatherData) {
+                    renderWeather(results, weatherData, cityName || countryName);
+                }
+            });
+        }
+
+        // ======== Phase B: Interactive Map ========
+        if (cityName) {
+            renderMap(results, cityName, countryName);
+        }
+
         // ======== Accommodations Section ========
         if (accommodations && accommodations.length > 0) {
             const accomSection = document.createElement('div');
@@ -774,6 +796,178 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }, 50);
         }
+    }
+
+    // ======== Phase B: Live Weather (wttr.in) ========
+    async function fetchWeather(city, country) {
+        try {
+            const query = encodeURIComponent(city || country || '');
+            const response = await fetch(`https://wttr.in/${query}?format=j1`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data;
+        } catch (err) {
+            console.error('Weather fetch error:', err);
+            return null;
+        }
+    }
+
+    function renderWeather(container, weatherData, cityName) {
+        if (!weatherData || !weatherData.current_condition || !weatherData.current_condition[0]) return;
+
+        const current = weatherData.current_condition[0];
+        const temp = current.temp_C;
+        const desc = current.weatherDesc?.[0]?.value || 'Unknown';
+        const humidity = current.humidity;
+        const wind = current.windspeedKmph;
+
+        // Determine clothing recommendation based on temperature
+        let clothing = '';
+        if (temp >= 30) clothing = '☀️ Light summer clothes, sunscreen, hat, sunglasses';
+        else if (temp >= 22) clothing = '👕 Light clothing, comfortable for warm weather';
+        else if (temp >= 15) clothing = '🧥 Light jacket or sweater recommended';
+        else if (temp >= 8) clothing = '🧣 Warm jacket, layers recommended';
+        else if (temp >= 0) clothing = '🧤 Heavy coat, gloves, scarf needed';
+        else clothing = '❄️ Extreme cold! Heavy winter gear, thermal layers essential';
+
+        const weatherCard = document.createElement('div');
+        weatherCard.className = 'section-card weather-card';
+
+        const title = document.createElement('h3');
+        title.className = 'section-title';
+        title.textContent = `🌤️ Live Weather in ${cityName}`;
+        weatherCard.appendChild(title);
+
+        const weatherMain = document.createElement('div');
+        weatherMain.className = 'weather-main';
+
+        const tempDiv = document.createElement('div');
+        tempDiv.className = 'weather-temp';
+        tempDiv.textContent = `${temp}°C`;
+        weatherMain.appendChild(tempDiv);
+
+        const descDiv = document.createElement('div');
+        descDiv.className = 'weather-desc';
+        descDiv.textContent = desc;
+        weatherMain.appendChild(descDiv);
+
+        weatherCard.appendChild(weatherMain);
+
+        const details = document.createElement('div');
+        details.className = 'weather-details';
+        details.textContent = `💧 Humidity: ${humidity}% • 🌬️ Wind: ${wind} km/h`;
+        weatherCard.appendChild(details);
+
+        const clothingDiv = document.createElement('div');
+        clothingDiv.className = 'weather-clothing';
+        clothingDiv.textContent = clothing;
+        weatherCard.appendChild(clothingDiv);
+
+        // 3-day forecast
+        if (weatherData.weather && weatherData.weather.length > 0) {
+            const forecastTitle = document.createElement('div');
+            forecastTitle.className = 'weather-forecast-title';
+            forecastTitle.textContent = '📅 3-Day Forecast';
+            weatherCard.appendChild(forecastTitle);
+
+            const forecastRow = document.createElement('div');
+            forecastRow.className = 'weather-forecast-row';
+
+            weatherData.weather.slice(0, 3).forEach(day => {
+                const dayDiv = document.createElement('div');
+                dayDiv.className = 'weather-forecast-day';
+
+                const date = new Date(day.date + 'T00:00:00');
+                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+
+                const dayLabel = document.createElement('div');
+                dayLabel.className = 'weather-forecast-day-name';
+                dayLabel.textContent = dayName;
+                dayDiv.appendChild(dayLabel);
+
+                const dayTemp = document.createElement('div');
+                dayTemp.className = 'weather-forecast-temp';
+                dayTemp.textContent = `${day.mintempC}° / ${day.maxtempC}°`;
+                dayDiv.appendChild(dayTemp);
+
+                const dayDesc = document.createElement('div');
+                dayDesc.className = 'weather-forecast-desc';
+                dayDesc.textContent = day.hourly?.[0]?.weatherDesc?.[0]?.value || '';
+                dayDiv.appendChild(dayDesc);
+
+                forecastRow.appendChild(dayDiv);
+            });
+
+            weatherCard.appendChild(forecastRow);
+        }
+
+        container.appendChild(weatherCard);
+    }
+
+    // ======== Phase B: Destination Image (Unsplash) ========
+    function renderDestinationImage(container, cityName, countryName) {
+        const imageCard = document.createElement('div');
+        imageCard.className = 'destination-image-card';
+
+        const img = document.createElement('img');
+        img.className = 'destination-image';
+        img.alt = `${cityName || countryName} destination photo`;
+        img.loading = 'lazy';
+
+        const query = encodeURIComponent(`${cityName || ''} ${countryName || ''}`.trim());
+        img.src = `https://source.unsplash.com/800x400/?${query}`;
+
+        img.onerror = () => {
+            // Fallback to gradient placeholder
+            imageCard.classList.add('image-fallback');
+            imageCard.innerHTML = `
+                <div class="image-fallback-content">
+                    <span class="image-fallback-icon">📸</span>
+                    <span class="image-fallback-text">${cityName || countryName}</span>
+                </div>
+            `;
+        };
+
+        imageCard.appendChild(img);
+        container.appendChild(imageCard);
+    }
+
+    // ======== Phase B: Interactive Map (Leaflet + OpenStreetMap) ========
+    function renderMap(container, cityName, countryName) {
+        const coords = CITY_COORDINATES[cityName];
+        if (!coords) return;
+
+        const mapCard = document.createElement('div');
+        mapCard.className = 'section-card map-card';
+
+        const title = document.createElement('h3');
+        title.className = 'section-title';
+        title.textContent = `🗺️ Map of ${cityName}`;
+        mapCard.appendChild(title);
+
+        const mapDiv = document.createElement('div');
+        mapDiv.className = 'map-container';
+        mapDiv.id = `map-${Date.now()}`;
+        mapCard.appendChild(mapDiv);
+
+        container.appendChild(mapCard);
+
+        // Initialize Leaflet map after DOM insertion
+        setTimeout(() => {
+            if (typeof L === 'undefined') return;
+
+            const map = L.map(mapDiv.id).setView([coords.lat, coords.lng], 12);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            L.marker([coords.lat, coords.lng])
+                .addTo(map)
+                .bindPopup(`<b>${cityName}</b><br>${countryName || ''}`)
+                .openPopup();
+        }, 100);
     }
 
     function normalizeTime(time) {
