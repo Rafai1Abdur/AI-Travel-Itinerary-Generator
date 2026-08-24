@@ -63,25 +63,69 @@
                 </div>
             </div>
 
+            <div class="form-section-title">🚗 Travel Time Calculator</div>
             <div class="form-row">
+                <div class="form-group">
+                    <label for="transport-mode">Transport Mode</label>
+                    <select id="transport-mode" name="transportMode">
+                        <option value="flight">✈️ Flight</option>
+                        <option value="car">🚗 Car</option>
+                        <option value="train">🚆 Train</option>
+                        <option value="bus">🚌 Bus</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label for="departure-time">Departure Time (from source)</label>
                     <input type="time" id="departure-time" name="departureTime">
-                </div>
-                <div class="form-group">
-                    <label for="arrival-time">Arrival Time (at destination)</label>
-                    <input type="time" id="arrival-time" name="arrivalTime">
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
+                    <label for="rest-stops">Rest Stops (count)</label>
+                    <input type="number" id="rest-stops" name="restStops" min="0" max="10" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="rest-stop-duration">Rest Stop Duration (minutes each)</label>
+                    <input type="number" id="rest-stop-duration" name="restStopDuration" min="0" max="480" value="30">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="emergency-stop">Emergency/Buffer Stop (minutes)</label>
+                    <input type="number" id="emergency-stop" name="emergencyStop" min="0" max="480" value="0"
+                        placeholder="e.g., 60">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button type="button" id="calculate-travel-time" class="btn-secondary" style="width:100%">⏱️
+                        Calculate Travel Time</button>
+                </div>
+            </div>
+
+            <div id="travel-time-result" class="travel-time-result hidden"></div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="arrival-time">Arrival Time (at destination)</label>
+                    <input type="time" id="arrival-time" name="arrivalTime">
+                </div>
+                <div class="form-group">
                     <label for="return-departure-time">Return Departure Time</label>
                     <input type="time" id="return-departure-time" name="returnDepartureTime">
                 </div>
+            </div>
+
+            <div class="form-row">
                 <div class="form-group">
                     <label for="return-arrival-time">Return Arrival Time</label>
                     <input type="time" id="return-arrival-time" name="returnArrivalTime">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button type="button" id="calculate-return-time" class="btn-secondary" style="width:100%">⏱️
+                        Calculate Return Time</button>
                 </div>
             </div>
 

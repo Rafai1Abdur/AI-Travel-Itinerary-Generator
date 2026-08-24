@@ -100,6 +100,191 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ======== Travel Time Calculator ========
+    const TRANSPORT_SPEEDS = {
+        flight: 800,   // km/h average
+        car: 80,       // km/h average
+        train: 120,    // km/h average
+        bus: 60        // km/h average
+    };
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Earth's radius in km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    function formatDuration(minutes) {
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.round(minutes % 60);
+        if (hours === 0) return `${mins}m`;
+        if (mins === 0) return `${hours}h`;
+        return `${hours}h ${mins}m`;
+    }
+
+    function addMinutesToTime(timeStr, minutes) {
+        if (!timeStr) return '';
+        const [hours, mins] = timeStr.split(':').map(Number);
+        const totalMins = hours * 60 + mins + minutes;
+        const newHours = Math.floor(totalMins / 60) % 24;
+        const newMins = totalMins % 60;
+        return `${String(newHours).padStart(2, '0')}:${String(newMins).padStart(2, '0')}`;
+    }
+
+    function calculateTravelTime(isReturn = false) {
+        const sourceCity = sourceCitySelect.value;
+        const destCity = citySelect.value;
+        const transportMode = document.getElementById('transport-mode').value;
+        const restStops = parseInt(document.getElementById('rest-stops').value) || 0;
+        const restStopDuration = parseInt(document.getElementById('rest-stop-duration').value) || 0;
+        const emergencyStop = parseInt(document.getElementById('emergency-stop').value) || 0;
+        const departureTime = isReturn
+            ? document.getElementById('return-departure-time').value
+            : document.getElementById('departure-time').value;
+
+        const resultDiv = document.getElementById('travel-time-result');
+
+        if (!sourceCity || !destCity) {
+            resultDiv.innerHTML = '<div class="travel-time-error">⚠️ Please select both source and destination cities first.</div>';
+            resultDiv.classList.remove('hidden');
+            return;
+        }
+
+        const sourceCoords = findCityCoords(sourceCity);
+        const destCoords = findCityCoords(destCity);
+
+        if (!sourceCoords || !destCoords) {
+            resultDiv.innerHTML = '<div class="travel-time-error">⚠️ Coordinates not available for one or both cities. Please enter times manually.</div>';
+            resultDiv.classList.remove('hidden');
+            return;
+        }
+
+        const distance = calculateDistance(sourceCoords.lat, sourceCoords.lng, destCoords.lat, destCoords.lng);
+        const speed = TRANSPORT_SPEEDS[transportMode] || 80;
+        const travelMinutes = (distance / speed) * 60;
+        const restMinutes = restStops * restStopDuration;
+        const totalMinutes = travelMinutes + restMinutes + emergencyStop;
+
+        const arrivalTime = addMinutesToTime(departureTime, totalMinutes);
+
+        // Auto-fill the arrival time field
+        if (isReturn) {
+            document.getElementById('return-arrival-time').value = arrivalTime;
+        } else {
+            document.getElementById('arrival-time').value = arrivalTime;
+        }
+
+        const modeEmoji = { flight: '✈️', car: '🚗', train: '🚆', bus: '🚌' }[transportMode] || '🚗';
+
+        resultDiv.innerHTML = `
+            <div class="travel-time-success">
+                <div class="travel-time-header">${modeEmoji} ${isReturn ? 'Return' : 'Outbound'} Journey Estimate</div>
+                <div class="travel-time-details">
+                    <div>📏 Distance: <strong>${Math.round(distance)} km</strong></div>
+                    <div>⏱️ Travel time: <strong>${formatDuration(travelMinutes)}</strong></div>
+                    ${restStops > 0 ? `<div>🛑 Rest stops: <strong>${restStops} × ${restStopDuration}m = ${formatDuration(restMinutes)}</strong></div>` : ''}
+                    ${emergencyStop > 0 ? `<div>🚨 Emergency buffer: <strong>${formatDuration(emergencyStop)}</strong></div>` : ''}
+                    <div class="travel-time-total">⏰ Total: <strong>${formatDuration(totalMinutes)}</strong></div>
+                    ${departureTime ? `<div class="travel-time-arrival">🎯 ${isReturn ? 'Return arrival' : 'Arrival'}: <strong>${arrivalTime}</strong> (auto-filled)</div>` : '<div>💡 Enter departure time to auto-calculate arrival</div>'}
+                </div>
+            </div>
+        `;
+        resultDiv.classList.remove('hidden');
+    }
+
+    document.getElementById('calculate-travel-time').addEventListener('click', () => calculateTravelTime(false));
+    document.getElementById('calculate-return-time').addEventListener('click', () => calculateTravelTime(true));
+
+    // ======== Currency Conversion (Fix 3) ========
+    let selectedCurrency = 'USD';
+    let exchangeRates = null;
+
+    // Fallback approximate rates (USD base) - used if API fails
+    const FALLBACK_RATES = {
+        USD: 1, EUR: 0.92, GBP: 0.79, PKR: 278, INR: 83, AED: 3.67,
+        SAR: 3.75, JPY: 150, CNY: 7.2, AUD: 1.52, CAD: 1.36, SGD: 1.35,
+        MYR: 4.7, THB: 36, IDR: 15700, PHP: 56, VND: 24500, BDT: 110,
+        LKR: 300, NPR: 133, EGP: 48, TRY: 32, RUB: 92, BRL: 5.0, MXN: 17
+    };
+
+    async function fetchExchangeRates() {
+        try {
+            const response = await fetch('https://open.er-api.com/v6/latest/USD');
+            if (!response.ok) throw new Error('Rate API failed');
+            const data = await response.json();
+            if (data && data.rates) {
+                exchangeRates = data.rates;
+                return;
+            }
+        } catch (err) {
+            console.warn('Exchange rate API failed, using fallback rates:', err);
+        }
+        exchangeRates = FALLBACK_RATES;
+    }
+
+    function getRate(currencyCode) {
+        if (!currencyCode) return 1;
+        if (exchangeRates && exchangeRates[currencyCode]) return exchangeRates[currencyCode];
+        if (FALLBACK_RATES[currencyCode]) return FALLBACK_RATES[currencyCode];
+        return 1;
+    }
+
+    function getCurrencySymbol(code) {
+        if (CURRENCIES && CURRENCIES[code]) return CURRENCIES[code].symbol || code;
+        return code;
+    }
+
+    // Convert a USD cost string like "$25" or "₹0 - ₹500" to selected currency
+    function convertCost(costStr) {
+        if (!costStr || selectedCurrency === 'USD') return costStr;
+        const rate = getRate(selectedCurrency);
+        const symbol = getCurrencySymbol(selectedCurrency);
+
+        // Match numbers in the cost string (e.g., "$25", "₹0 - ₹500", "$100/night")
+        const matches = String(costStr).match(/\d+(?:\.\d+)?/g);
+        if (!matches) return costStr;
+
+        let converted = String(costStr);
+        matches.forEach(num => {
+            const usdValue = parseFloat(num);
+            if (isNaN(usdValue)) return;
+            const localValue = Math.round(usdValue * rate);
+            // Replace the number with converted value (keep formatting simple)
+            converted = converted.replace(num, `${symbol}${localValue.toLocaleString()}`);
+        });
+
+        // Append USD reference
+        return `${converted} (≈$${costStr})`;
+    }
+
+    // Update selected currency when source country changes (auto-detect)
+    const originalSourceCountryHandler = sourceCountrySelect.onchange;
+    sourceCountrySelect.addEventListener('change', () => {
+        const selectedCountry = sourceCountrySelect.value;
+        if (selectedCountry && typeof getCurrencyForCountry === 'function') {
+            const currencyCode = getCurrencyForCountry(selectedCountry);
+            if (currencyCode) {
+                selectedCurrency = currencyCode;
+                if (budgetCurrencySelect) budgetCurrencySelect.value = currencyCode;
+            }
+        }
+    });
+
+    // Update selected currency when user manually picks a budget currency
+    budgetCurrencySelect.addEventListener('change', () => {
+        if (budgetCurrencySelect.value) {
+            selectedCurrency = budgetCurrencySelect.value;
+        }
+    });
+
+    // Fetch exchange rates on page load
+    fetchExchangeRates();
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -390,7 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const stats = [
                     { label: 'Total Days', value: days.length },
                     { label: 'Total Activities', value: days.reduce((sum, d) => sum + (d.activities?.length || 0), 0) },
-                    { label: 'Budget', value: overview.totalBudget || '—' }
+                    { label: 'Budget', value: overview.totalBudget ? convertCost(overview.totalBudget) : '—' }
                 ];
                 stats.forEach(stat => {
                     const statItem = document.createElement('div');
@@ -463,7 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 hotelDetails.className = 'hotel-details';
                 const parts = [];
                 if (hotel.area) parts.push(`📍 ${hotel.area}`);
-                if (hotel.pricePerNight) parts.push(`💰 ${hotel.pricePerNight}/night`);
+                if (hotel.pricePerNight) parts.push(`💰 ${convertCost(hotel.pricePerNight)}/night`);
                 if (hotel.rating) parts.push(`⭐ ${hotel.rating}`);
                 hotelDetails.textContent = parts.join(' • ');
                 hotelItem.appendChild(hotelDetails);
@@ -587,7 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Metadata row
                     const metaParts = [];
                     if (actDuration) metaParts.push(`⏱️ ${actDuration}`);
-                    if (actCost) metaParts.push(`💰 ${actCost}`);
+                    if (actCost) metaParts.push(`💰 ${convertCost(actCost)}`);
                     if (metaParts.length > 0) {
                         const metaDiv = document.createElement('div');
                         metaDiv.className = 'activity-meta';
@@ -798,16 +983,57 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ======== Phase B: Live Weather (wttr.in) ========
+    // ======== Phase B: Live Weather (wttr.in with Open-Meteo fallback) ========
     async function fetchWeather(city, country) {
+        // Try wttr.in first
         try {
             const query = encodeURIComponent(city || country || '');
             const response = await fetch(`https://wttr.in/${query}?format=j1`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.current_condition) return data;
+            }
+        } catch (err) {
+            console.warn('wttr.in failed, trying Open-Meteo:', err);
+        }
+
+        // Fallback: Open-Meteo (no API key, CORS-friendly)
+        try {
+            const coords = findCityCoords(city);
+            if (!coords) return null;
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`;
+            const response = await fetch(url);
             if (!response.ok) return null;
             const data = await response.json();
-            return data;
+
+            // Convert Open-Meteo format to wttr.in-like format
+            const weatherCodes = {
+                0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+                45: 'Foggy', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle',
+                55: 'Dense drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain',
+                71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 80: 'Light showers',
+                81: 'Showers', 82: 'Violent showers', 95: 'Thunderstorm'
+            };
+
+            const current = data.current_weather;
+            const daily = data.daily || {};
+
+            return {
+                current_condition: [{
+                    temp_C: Math.round(current.temperature),
+                    weatherDesc: [{ value: weatherCodes[current.weathercode] || 'Unknown' }],
+                    humidity: 0,
+                    windspeedKmph: Math.round((current.windspeed || 0) * 3.6)
+                }],
+                weather: (daily.time || []).slice(0, 3).map((date, i) => ({
+                    date: date,
+                    mintempC: Math.round(daily.temperature_2m_min[i]),
+                    maxtempC: Math.round(daily.temperature_2m_max[i]),
+                    hourly: [{ weatherDesc: [{ value: weatherCodes[daily.weathercode[i]] || 'Unknown' }] }]
+                }))
+            };
         } catch (err) {
-            console.error('Weather fetch error:', err);
+            console.error('Open-Meteo fallback failed:', err);
             return null;
         }
     }
@@ -855,7 +1081,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const details = document.createElement('div');
         details.className = 'weather-details';
-        details.textContent = `💧 Humidity: ${humidity}% • 🌬️ Wind: ${wind} km/h`;
+        // Only show humidity if it's a real value (Open-Meteo fallback sets it to 0)
+        const humidityText = humidity > 0 ? `💧 Humidity: ${humidity}% • ` : '';
+        details.textContent = `${humidityText}🌬️ Wind: ${wind} km/h`;
         weatherCard.appendChild(details);
 
         const clothingDiv = document.createElement('div');
@@ -904,7 +1132,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.appendChild(weatherCard);
     }
 
-    // ======== Phase B: Destination Image (Unsplash) ========
+    // ======== Phase B: Destination Image (LoremFlickr - Unsplash Source deprecated) ========
     function renderDestinationImage(container, cityName, countryName) {
         const imageCard = document.createElement('div');
         imageCard.className = 'destination-image-card';
@@ -914,8 +1142,9 @@ document.addEventListener('DOMContentLoaded', () => {
         img.alt = `${cityName || countryName} destination photo`;
         img.loading = 'lazy';
 
+        // Use LoremFlickr (free, no API key) - Unsplash Source was deprecated
         const query = encodeURIComponent(`${cityName || ''} ${countryName || ''}`.trim());
-        img.src = `https://source.unsplash.com/800x400/?${query}`;
+        img.src = `https://loremflickr.com/800/400/${query}`;
 
         img.onerror = () => {
             // Fallback to gradient placeholder
@@ -933,8 +1162,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ======== Phase B: Interactive Map (Leaflet + OpenStreetMap) ========
+    function findCityCoords(cityName) {
+        if (!cityName) return null;
+        // Exact match first
+        if (CITY_COORDINATES[cityName]) return CITY_COORDINATES[cityName];
+        // Fuzzy match: try case-insensitive
+        const lower = cityName.toLowerCase();
+        for (const key of Object.keys(CITY_COORDINATES)) {
+            if (key.toLowerCase() === lower) return CITY_COORDINATES[key];
+        }
+        // Partial match: city name is a substring of a key, or key is a substring of city name
+        for (const key of Object.keys(CITY_COORDINATES)) {
+            const keyLower = key.toLowerCase();
+            if (keyLower.includes(lower) || lower.includes(keyLower)) {
+                return CITY_COORDINATES[key];
+            }
+        }
+        return null;
+    }
+
     function renderMap(container, cityName, countryName) {
-        const coords = CITY_COORDINATES[cityName];
+        const coords = findCityCoords(cityName);
         if (!coords) return;
 
         const mapCard = document.createElement('div');
@@ -948,6 +1196,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const mapDiv = document.createElement('div');
         mapDiv.className = 'map-container';
         mapDiv.id = `map-${Date.now()}`;
+        mapDiv.style.height = '300px'; // Ensure explicit height for Leaflet
+        mapDiv.style.width = '100%';
         mapCard.appendChild(mapDiv);
 
         container.appendChild(mapCard);
